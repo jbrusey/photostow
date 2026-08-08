@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import signal
 import sys
 from pathlib import Path
@@ -94,8 +95,13 @@ def cmd_copy_missing(args: argparse.Namespace) -> int:
 
 
 def cmd_stage_review(args: argparse.Namespace) -> int:
+    review_dir = Path(args.review_dir)
+    if review_dir.exists() and any(review_dir.iterdir()):
+        if not args.replace:
+            raise SystemExit(f"{review_dir} is not empty; use --replace to rebuild it")
+        shutil.rmtree(review_dir)
     records = missing_records(Path(args.missing_tsv))
-    count = stage_by_year(records, Path(args.source_root), Path(args.review_dir))
+    count = stage_by_year(records, Path(args.source_root), review_dir)
     print(f"staged {count} files", file=sys.stderr)
     return 0
 
@@ -174,6 +180,7 @@ def build_parser() -> argparse.ArgumentParser:
     review_parser.add_argument("missing_tsv")
     review_parser.add_argument("source_root")
     review_parser.add_argument("review_dir")
+    review_parser.add_argument("--replace", action="store_true")
     review_parser.set_defaults(func=cmd_stage_review)
 
     copy_tree_parser = sub.add_parser("copy-tree", help="copy a reviewed tree to remote")
