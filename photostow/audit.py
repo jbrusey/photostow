@@ -37,12 +37,12 @@ def remote_files(host: str, root: str) -> list[RemoteFile]:
     root = root.rstrip("/") + "/"
     script = (
         f"find {root!r} -path '*/@eaDir' -prune -o -type f -print0 "
-        "| xargs -0 stat -c '%s\\t%n'"
+        "| xargs -0 stat -c '%s %n'"
     )
     out = ssh_stdout(host, script)
     files = []
     for line in out.splitlines():
-        size, _, path = line.partition("\t")
+        size, _, path = line.partition(" ")
         if path:
             files.append(RemoteFile(path=path, size=int(size)))
     return files
