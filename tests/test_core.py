@@ -1,0 +1,35 @@
+from pathlib import Path
+
+from photostow.core import hash_tree, missing_hash_records, parse_sha_lines, sha256_file
+
+
+def test_sha256_file(tmp_path: Path) -> None:
+    photo = tmp_path / "photo.jpg"
+    photo.write_bytes(b"not really a jpeg")
+
+    assert sha256_file(photo) == "21ac2586e213d1f490778a07bf0025a98fc57595863a282372bac594b398322b"
+
+
+def test_parse_sha_lines_keeps_paths_with_spaces() -> None:
+    lines = ["abc123  /tmp/my export/photo one.jpg\n"]
+
+    assert list(parse_sha_lines(lines)) == [("abc123", "/tmp/my export/photo one.jpg")]
+
+
+def test_missing_hash_records_compares_content_not_name() -> None:
+    source = [
+        "same  /export/new-name.jpg\n",
+        "new  /export/actually-new.jpg\n",
+    ]
+    archive = ["same  /volume1/photo/old-name.jpg\n"]
+
+    assert list(missing_hash_records(source, archive)) == [
+        ("new", "/export/actually-new.jpg")
+    ]
+
+
+def test_hash_tree_lists_files_sorted(tmp_path: Path) -> None:
+    (tmp_path / "b.txt").write_text("b", encoding="utf-8")
+    (tmp_path / "a.txt").write_text("a", encoding="utf-8")
+
+    assert [path.name for _, path in hash_tree(tmp_path)] == ["a.txt", "b.txt"]
