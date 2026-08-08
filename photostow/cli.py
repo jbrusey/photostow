@@ -6,6 +6,7 @@ import signal
 import sys
 from pathlib import Path
 
+from photostow.audit import write_audit
 from photostow.core import hash_tree, missing_hash_records, parse_sha_lines
 from photostow.photos import (
     earliest_created,
@@ -118,6 +119,19 @@ def cmd_copy_tree(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_audit_new_remote(args: argparse.Namespace) -> int:
+    print(
+        write_audit(
+            args.host,
+            args.root,
+            Path(args.ledger),
+            Path(args.workdir),
+            do_hash=args.hash,
+        )
+    )
+    return 0
+
+
 def cmd_update_remote_ledger(args: argparse.Namespace) -> int:
     count = update_remote_ledger(
         args.host, args.root, Path(args.ledger), Path(args.output) if args.output else None
@@ -164,6 +178,16 @@ def build_parser() -> argparse.ArgumentParser:
     update_parser.add_argument("ledger")
     update_parser.add_argument("--output")
     update_parser.set_defaults(func=cmd_update_remote_ledger)
+
+    audit_parser = sub.add_parser(
+        "audit-new-remote", help="estimate/hash only remote paths missing from ledger"
+    )
+    audit_parser.add_argument("host")
+    audit_parser.add_argument("root")
+    audit_parser.add_argument("ledger")
+    audit_parser.add_argument("--workdir", default="audit-new-remote")
+    audit_parser.add_argument("--hash", action="store_true")
+    audit_parser.set_defaults(func=cmd_audit_new_remote)
 
     copy_parser = sub.add_parser("copy-missing", help="copy paths from missing TSV")
     copy_parser.add_argument("missing_tsv")

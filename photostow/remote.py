@@ -26,9 +26,14 @@ class MissingRecord:
         return self.created[:4] if len(self.created) >= 4 else "unknown"
 
 
+def ssh_stdout(host: str, command: str) -> str:
+    result = subprocess.run([*SSH, host, command], check=True, stdout=subprocess.PIPE)
+    return result.stdout.decode()
+
+
 def remote_find(host: str, root: str) -> list[str]:
     find_root = root.rstrip("/") + "/"
-    cmd = f"find {shlex.quote(find_root)} -type f -not -path '*/@eaDir/*' -print0"
+    cmd = f"find {shlex.quote(find_root)} -path '*/@eaDir' -prune -o -type f -print0"
     result = subprocess.run(
         [*SSH, host, cmd], check=True, stdout=subprocess.PIPE, stderr=None
     )
