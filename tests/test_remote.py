@@ -4,6 +4,18 @@ from typing import Any
 from photostow import remote
 
 
+def test_paths_from_missing_tsv_and_relative_paths(tmp_path: Path) -> None:
+    tsv = tmp_path / "missing.tsv"
+    root = tmp_path / "originals"
+    path = root / "A" / "photo.jpg"
+    tsv.write_text(f"sha256\tcreated\tadjusted\tpath\nabc\t\t0\t{path}\n", encoding="utf-8")
+
+    paths = remote.paths_from_missing_tsv(tsv)
+
+    assert paths == [path]
+    assert remote.relative_paths(paths, root) == ["A/photo.jpg"]
+
+
 def test_update_remote_ledger_hashes_only_new_paths(
     tmp_path: Path, monkeypatch: Any
 ) -> None:

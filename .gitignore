@@ -9,4 +9,7 @@ dist/
 *.egg-info/
 .DS_Store
 *.sha256
+photos-*-sha
+missing*.tsv
+missing*.err
 missing.txt

@@ -12,7 +12,12 @@ from photostow.photos import (
     library_hashes,
     missing_library_assets,
 )
-from photostow.remote import update_remote_ledger
+from photostow.remote import (
+    copy_paths_tar,
+    paths_from_missing_tsv,
+    relative_paths,
+    update_remote_ledger,
+)
 
 
 def cmd_hash(args: argparse.Namespace) -> int:
@@ -62,6 +67,18 @@ def cmd_library_missing(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_copy_missing(args: argparse.Namespace) -> int:
+    paths = paths_from_missing_tsv(Path(args.missing_tsv))
+    rels = relative_paths(paths, Path(args.source_root))
+    if args.dry_run:
+        for rel in rels:
+            print(rel)
+        return 0
+    count = copy_paths_tar(rels, Path(args.source_root), args.host, args.dest_root)
+    print(f"copied {count} files", file=sys.stderr)
+    return 0
+
+
 def cmd_update_remote_ledger(args: argparse.Namespace) -> int:
     count = update_remote_ledger(
         args.host, args.root, Path(args.ledger), Path(args.output) if args.output else None
@@ -108,6 +125,14 @@ def build_parser() -> argparse.ArgumentParser:
     update_parser.add_argument("ledger")
     update_parser.add_argument("--output")
     update_parser.set_defaults(func=cmd_update_remote_ledger)
+
+    copy_parser = sub.add_parser("copy-missing", help="copy paths from missing TSV")
+    copy_parser.add_argument("missing_tsv")
+    copy_parser.add_argument("source_root")
+    copy_parser.add_argument("host")
+    copy_parser.add_argument("dest_root")
+    copy_parser.add_argument("--dry-run", action="store_true")
+    copy_parser.set_defaults(func=cmd_copy_missing)
 
     return parser
 
