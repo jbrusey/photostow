@@ -32,11 +32,11 @@ photostow/
 uv sync
 make test
 
-# Hash a Photos library or export folder from any laptop
-uv run photostow hash "$HOME/Pictures/Photos Library.photoslibrary/originals" > local.sha256
+# Inspect the Photos library metadata read-only
+uv run photostow inspect-library "$HOME/Pictures/Photos Library.photoslibrary" > library.tsv
 
 # Find local originals that are not already on Synology
-uv run photostow missing local.sha256 photos-oxygen-sha > missing.txt
+uv run photostow library-missing "$HOME/Pictures/Photos Library.photoslibrary" photos-oxygen-sha > missing.tsv
 ```
 
 ## Synology workflow
@@ -51,14 +51,13 @@ For large archives, keep the existing incremental Makefile idea: reuse old hashe
 
 ## Photos library workflow
 
-Start with the library files themselves, not a manual export:
+Start with the library database and files themselves, not a manual export:
 
-1. Find local Photos originals under `Photos Library.photoslibrary/originals`.
-2. Hash them and compare against the Synology ledger.
-3. For unmatched originals, compute the earliest datestamp available from:
-   - EXIF `CreateDate` if available later via `exiftool`/`osxphotos`, or
-   - file modification time as the no-dependency fallback.
-4. Use that earliest date as the Photos.app export start date if manual export is still needed.
+1. Read `database/Photos.sqlite` in read-only mode.
+2. Map each non-trashed asset to `originals/<ZDIRECTORY>/<ZFILENAME>`.
+3. Hash present originals and compare against the Synology ledger.
+4. For unmatched originals, report Photos' `ZDATECREATED` and whether Photos says it has adjustments.
+5. Use the earliest missing creation date as the Photos.app export start date if manual export is still needed.
 
 Avoiding manual export:
 

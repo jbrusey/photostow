@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 import argparse
+import signal
 import sys
 from pathlib import Path
 
-from photostow.core import hash_tree, missing_hash_records
+from photostow.core import hash_tree, missing_hash_records, parse_sha_lines
+from photostow.photos import (
+    earliest_created,
+    iter_assets,
+    library_hashes,
+    missing_library_assets,
+)
 
 
 def cmd_hash(args: argparse.Namespace) -> int:
@@ -23,6 +30,37 @@ def cmd_missing(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_inspect_library(args: argparse.Namespace) -> int:
+    print("uuid\tcreated\tadjusted\tpresent\tpath")
+    for asset in iter_assets(Path(args.library)):
+        created = asset.created.isoformat() if asset.created else ""
+        print(
+            f"{asset.uuid}\t{created}\t{int(asset.has_adjustments)}\t"
+            f"{int(asset.present)}\t{asset.path}"
+        )
+    return 0
+
+
+def cmd_library_hashes(args: argparse.Namespace) -> int:
+    for digest, asset in library_hashes(Path(args.library)):
+        print(f"{digest}  {asset.path}")
+    return 0
+
+
+def cmd_library_missing(args: argparse.Namespace) -> int:
+    with open(args.archive_hashes, encoding="utf-8") as archive:
+        archived = {digest for digest, _ in parse_sha_lines(archive)}
+    missing = missing_library_assets(Path(args.library), archived)
+    print("sha256\tcreated\tadjusted\tpath")
+    for digest, asset in missing:
+        created = asset.created.isoformat() if asset.created else ""
+        print(f"{digest}\t{created}\t{int(asset.has_adjustments)}\t{asset.path}")
+    earliest = earliest_created([asset for _, asset in missing])
+    if earliest:
+        print(f"earliest missing creation date: {earliest.isoformat()}", file=sys.stderr)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="photostow")
     sub = parser.add_subparsers(required=True)
@@ -36,10 +74,28 @@ def build_parser() -> argparse.ArgumentParser:
     missing_parser.add_argument("archive_hashes")
     missing_parser.set_defaults(func=cmd_missing)
 
+    inspect_parser = sub.add_parser("inspect-library", help="list Photos library assets")
+    inspect_parser.add_argument("library")
+    inspect_parser.set_defaults(func=cmd_inspect_library)
+
+    library_hash_parser = sub.add_parser(
+        "library-hashes", help="hash present originals in a Photos library"
+    )
+    library_hash_parser.add_argument("library")
+    library_hash_parser.set_defaults(func=cmd_library_hashes)
+
+    library_missing_parser = sub.add_parser(
+        "library-missing", help="list Photos originals absent from archive hashes"
+    )
+    library_missing_parser.add_argument("library")
+    library_missing_parser.add_argument("archive_hashes")
+    library_missing_parser.set_defaults(func=cmd_library_missing)
+
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
+    signal.signal(signal.SIGPIPE, signal.SIG_DFL)
     args = build_parser().parse_args(argv)
     return args.func(args)
 
