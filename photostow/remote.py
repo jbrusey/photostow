@@ -4,16 +4,33 @@ import os
 import shlex
 import subprocess
 import tempfile
+from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 
 from photostow.core import paths_not_in_ledger
+
+SSH = ["ssh", "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=120"]
+TAR = ["tar", "--no-xattrs"]
+
+
+@dataclass(frozen=True)
+class MissingRecord:
+    digest: str
+    created: str
+    adjusted: bool
+    path: Path
+
+    @property
+    def year(self) -> str:
+        return self.created[:4] if len(self.created) >= 4 else "unknown"
 
 
 def remote_find(host: str, root: str) -> list[str]:
     find_root = root.rstrip("/") + "/"
     cmd = f"find {shlex.quote(find_root)} -type f -not -path '*/@eaDir/*' -print0"
     result = subprocess.run(
-        ["ssh", host, cmd], check=True, stdout=subprocess.PIPE, stderr=None
+        [*SSH, host, cmd], check=True, stdout=subprocess.PIPE, stderr=None
     )
     return [path for path in result.stdout.decode().split("\0") if path]
 
@@ -23,7 +40,7 @@ def remote_sha256(host: str, paths: list[str]) -> str:
         return ""
     data = "\0".join(paths).encode() + b"\0"
     result = subprocess.run(
-        ["ssh", host, "xargs -0 sha256sum"],
+        [*SSH, host, "xargs -0 sha256sum"],
         input=data,
         check=True,
         stdout=subprocess.PIPE,
@@ -32,12 +49,22 @@ def remote_sha256(host: str, paths: list[str]) -> str:
     return result.stdout.decode()
 
 
-def paths_from_missing_tsv(tsv: Path) -> list[Path]:
+def missing_records(tsv: Path) -> list[MissingRecord]:
     with tsv.open(encoding="utf-8") as f:
-        header = next(f, "")
-        if header.rstrip("\n").split("\t")[-1] != "path":
-            raise ValueError("missing TSV must have path as the last column")
-        return [Path(line.rstrip("\n").split("\t")[-1]) for line in f if line.strip()]
+        header = next(f, "").rstrip("\n").split("\t")
+        if header != ["sha256", "created", "adjusted", "path"]:
+            raise ValueError("missing TSV must have columns: sha256, created, adjusted, path")
+        rows = []
+        for line in f:
+            if not line.strip():
+                continue
+            digest, created, adjusted, path = line.rstrip("\n").split("\t")
+            rows.append(MissingRecord(digest, created, adjusted == "1", Path(path)))
+        return rows
+
+
+def paths_from_missing_tsv(tsv: Path) -> list[Path]:
+    return [record.path for record in missing_records(tsv)]
 
 
 def relative_paths(paths: list[Path], root: Path) -> list[str]:
@@ -52,18 +79,90 @@ def copy_paths_tar(paths: list[str], source_root: Path, host: str, dest_root: st
         f.flush()
         mkdir = f"mkdir -p {shlex.quote(dest_root)}"
         extract = f"cd {shlex.quote(dest_root)} && tar -xf -"
-        subprocess.run(["ssh", host, mkdir], check=True)
+        subprocess.run([*SSH, host, mkdir], check=True)
         with subprocess.Popen(
-            ["tar", "-cf", "-", "-C", str(source_root), "-T", f.name],
+            [*TAR, "-cf", "-", "-C", str(source_root), "-T", f.name],
             env={**os.environ, "COPYFILE_DISABLE": "1"},
             stdout=subprocess.PIPE,
         ) as tar:
-            subprocess.run(["ssh", host, extract], stdin=tar.stdout, check=True)
+            subprocess.run([*SSH, host, extract], stdin=tar.stdout, check=True)
             if tar.stdout:
                 tar.stdout.close()
             if tar.wait() != 0:
                 raise subprocess.CalledProcessError(tar.returncode, tar.args)
     return len(paths)
+
+
+def stage_by_year(records: list[MissingRecord], source_root: Path, stage: Path) -> int:
+    count = 0
+    for record in records:
+        rel = record.path.relative_to(source_root)
+        src = source_root / rel
+        if not src.is_file():
+            continue
+        name = src.name
+        dest = stage / record.year / name
+        if dest.exists():
+            dest = stage / record.year / f"{record.digest[:12]}-{name}"
+        if dest.exists():
+            continue
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        os.link(src, dest)
+        count += 1
+    return count
+
+
+def chmod_years(host: str, dest_root: str, years: list[str]) -> None:
+    for year in years:
+        path = f"{dest_root.rstrip('/')}/{year}"
+        cmd = (
+            f"find {shlex.quote(path)} -type d -exec chmod u+rwx,go+rx {{}} + "
+            f"-o -type f -exec chmod u+rw,go+r {{}} +"
+        )
+        subprocess.run([*SSH, host, cmd], check=True)
+
+
+def copy_stage(stage: Path, host: str, dest_root: str) -> None:
+    subprocess.run([*SSH, host, f"mkdir -p {shlex.quote(dest_root)}"], check=True)
+    years = sorted(path.name for path in stage.iterdir() if path.is_dir())
+    files = [str(path.relative_to(stage)) for path in stage.rglob("*") if path.is_file()]
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8") as f:
+        f.write("\n".join(files) + "\n")
+        f.flush()
+        tar_cmd = [*TAR, "-cf", "-", "-C", str(stage), "-T", f.name]
+        tar = subprocess.Popen(
+            tar_cmd,
+            env={**os.environ, "COPYFILE_DISABLE": "1"},
+            stdout=subprocess.PIPE,
+        )
+        subprocess.run(
+            [*SSH, host, f"cd {shlex.quote(dest_root)} && tar -xf -"],
+            stdin=tar.stdout,
+            check=True,
+        )
+        if tar.stdout:
+            tar.stdout.close()
+        if tar.wait() != 0:
+            raise subprocess.CalledProcessError(tar.returncode, tar.args)
+    chmod_years(host, dest_root, years)
+
+
+def copy_records_by_year(
+    records: list[MissingRecord], source_root: Path, host: str, dest_root: str
+) -> int:
+    by_year: dict[str, list[MissingRecord]] = defaultdict(list)
+    for record in records:
+        by_year[record.year].append(record)
+
+    total = 0
+    for year, year_records in sorted(by_year.items()):
+        with tempfile.TemporaryDirectory() as tmp:
+            stage = Path(tmp) / "stage"
+            count = stage_by_year(year_records, source_root, stage)
+            if count:
+                copy_stage(stage, host, dest_root)
+                total += count
+    return total
 
 
 def update_remote_ledger(host: str, root: str, ledger: Path, output: Path | None = None) -> int:

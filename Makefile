@@ -2,8 +2,9 @@ OXYGEN_HOST ?= oxygen
 OXYGEN_DIR ?= /var/services/photo
 OXYGEN_LEDGER ?= photos-oxygen-sha
 PHOTOS_ORIGINALS ?= $(HOME)/Pictures/Photos Library.photoslibrary/originals
+REVIEW_DIR ?= review
 
-.PHONY: test lint typecheck check update-oxygen-ledger copy-missing-to-oxygen clean
+.PHONY: test lint typecheck check update-oxygen-ledger stage-review copy-reviewed-to-oxygen clean
 
 test:
 	uv run pytest tests
@@ -19,8 +20,11 @@ check: test lint typecheck
 update-oxygen-ledger:
 	uv run photostow update-remote-ledger $(OXYGEN_HOST) $(OXYGEN_DIR) $(OXYGEN_LEDGER)
 
-copy-missing-to-oxygen:
-	uv run photostow copy-missing missing.tsv "$(PHOTOS_ORIGINALS)" $(OXYGEN_HOST) $(OXYGEN_DIR)/incoming/$$(hostname -s)
+stage-review:
+	uv run photostow stage-review missing.tsv "$(PHOTOS_ORIGINALS)" $(REVIEW_DIR)
+
+copy-reviewed-to-oxygen:
+	uv run photostow copy-tree $(REVIEW_DIR) $(OXYGEN_HOST) $(OXYGEN_DIR)
 
 clean:
 	-rm -rf .pytest_cache .ruff_cache .mypy_cache build dist *.egg-info

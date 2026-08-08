@@ -11,8 +11,10 @@ Use content hashes as the archive truth:
 1. Hash original files inside the local Photos library.
 2. Compare those hashes with the Synology hash ledger.
 3. Use the unmatched local originals to choose the export/import set.
-4. Export or copy only those unmatched photos.
-5. Refresh the Synology ledger incrementally after import: list remote paths, hash only paths not already in the ledger.
+4. Hardlink unmatched photos into a local review tree (`review/YYYY/filename`).
+5. Delete anything unwanted from the review tree.
+6. Copy the reviewed tree into Synology year folders (`YYYY/filename`).
+7. Refresh the Synology ledger incrementally after import: list remote paths, hash only paths not already in the ledger.
 
 Dates are only for narrowing the export/search window and optional folder naming. They are not used for correctness.
 
@@ -37,6 +39,10 @@ uv run photostow inspect-library "$HOME/Pictures/Photos Library.photoslibrary" >
 
 # Find local originals that are not already on Synology
 uv run photostow library-missing "$HOME/Pictures/Photos Library.photoslibrary" photos-oxygen-sha > missing.tsv
+
+# Build a local review tree, delete unwanted files, then copy what remains
+uv run photostow stage-review missing.tsv "$HOME/Pictures/Photos Library.photoslibrary/originals" review
+uv run photostow copy-tree review oxygen /var/services/photo
 ```
 
 ## Synology workflow

@@ -13,3 +13,5 @@ photos-*-sha
 missing*.tsv
 missing*.err
 missing.txt
+review/
+review-*/

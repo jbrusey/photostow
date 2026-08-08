@@ -8,12 +8,29 @@ def test_paths_from_missing_tsv_and_relative_paths(tmp_path: Path) -> None:
     tsv = tmp_path / "missing.tsv"
     root = tmp_path / "originals"
     path = root / "A" / "photo.jpg"
-    tsv.write_text(f"sha256\tcreated\tadjusted\tpath\nabc\t\t0\t{path}\n", encoding="utf-8")
+    tsv.write_text(
+        f"sha256\tcreated\tadjusted\tpath\nabc\t2024-01-01T00:00:00\t0\t{path}\n",
+        encoding="utf-8",
+    )
 
+    records = remote.missing_records(tsv)
     paths = remote.paths_from_missing_tsv(tsv)
 
+    assert records[0].year == "2024"
     assert paths == [path]
     assert remote.relative_paths(paths, root) == ["A/photo.jpg"]
+
+
+def test_stage_by_year_hardlinks_flat_year_dirs(tmp_path: Path) -> None:
+    root = tmp_path / "originals"
+    src = root / "A" / "photo.jpg"
+    src.parent.mkdir(parents=True)
+    src.write_bytes(b"photo")
+    stage = tmp_path / "stage"
+    record = remote.MissingRecord("abc123", "2025-02-03T00:00:00", False, src)
+
+    assert remote.stage_by_year([record], root, stage) == 1
+    assert (stage / "2025" / "photo.jpg").read_bytes() == b"photo"
 
 
 def test_update_remote_ledger_hashes_only_new_paths(

@@ -14,8 +14,12 @@ from photostow.photos import (
 )
 from photostow.remote import (
     copy_paths_tar,
+    copy_records_by_year,
+    copy_stage,
+    missing_records,
     paths_from_missing_tsv,
     relative_paths,
+    stage_by_year,
     update_remote_ledger,
 )
 
@@ -68,14 +72,43 @@ def cmd_library_missing(args: argparse.Namespace) -> int:
 
 
 def cmd_copy_missing(args: argparse.Namespace) -> int:
-    paths = paths_from_missing_tsv(Path(args.missing_tsv))
-    rels = relative_paths(paths, Path(args.source_root))
-    if args.dry_run:
-        for rel in rels:
-            print(rel)
-        return 0
-    count = copy_paths_tar(rels, Path(args.source_root), args.host, args.dest_root)
+    if args.by_year:
+        records = missing_records(Path(args.missing_tsv))
+        if args.dry_run:
+            for record in records:
+                print(f"{record.year}/{record.path.name}")
+            return 0
+        count = copy_records_by_year(
+            records, Path(args.source_root), args.host, args.dest_root
+        )
+    else:
+        paths = paths_from_missing_tsv(Path(args.missing_tsv))
+        rels = relative_paths(paths, Path(args.source_root))
+        if args.dry_run:
+            for rel in rels:
+                print(rel)
+            return 0
+        count = copy_paths_tar(rels, Path(args.source_root), args.host, args.dest_root)
     print(f"copied {count} files", file=sys.stderr)
+    return 0
+
+
+def cmd_stage_review(args: argparse.Namespace) -> int:
+    records = missing_records(Path(args.missing_tsv))
+    count = stage_by_year(records, Path(args.source_root), Path(args.review_dir))
+    print(f"staged {count} files", file=sys.stderr)
+    return 0
+
+
+def cmd_copy_tree(args: argparse.Namespace) -> int:
+    if args.dry_run:
+        review_dir = Path(args.review_dir)
+        for path in sorted(review_dir.rglob("*")):
+            if path.is_file():
+                print(path.relative_to(review_dir))
+        return 0
+    copy_stage(Path(args.review_dir), args.host, args.dest_root)
+    print("copied reviewed tree", file=sys.stderr)
     return 0
 
 
@@ -131,8 +164,24 @@ def build_parser() -> argparse.ArgumentParser:
     copy_parser.add_argument("source_root")
     copy_parser.add_argument("host")
     copy_parser.add_argument("dest_root")
+    copy_parser.add_argument("--by-year", action="store_true")
     copy_parser.add_argument("--dry-run", action="store_true")
     copy_parser.set_defaults(func=cmd_copy_missing)
+
+    review_parser = sub.add_parser(
+        "stage-review", help="hardlink missing files into a local review tree by year"
+    )
+    review_parser.add_argument("missing_tsv")
+    review_parser.add_argument("source_root")
+    review_parser.add_argument("review_dir")
+    review_parser.set_defaults(func=cmd_stage_review)
+
+    copy_tree_parser = sub.add_parser("copy-tree", help="copy a reviewed tree to remote")
+    copy_tree_parser.add_argument("review_dir")
+    copy_tree_parser.add_argument("host")
+    copy_tree_parser.add_argument("dest_root")
+    copy_tree_parser.add_argument("--dry-run", action="store_true")
+    copy_tree_parser.set_defaults(func=cmd_copy_tree)
 
     return parser
 
