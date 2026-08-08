@@ -12,6 +12,7 @@ from photostow.photos import (
     library_hashes,
     missing_library_assets,
 )
+from photostow.remote import update_remote_ledger
 
 
 def cmd_hash(args: argparse.Namespace) -> int:
@@ -61,6 +62,14 @@ def cmd_library_missing(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_update_remote_ledger(args: argparse.Namespace) -> int:
+    count = update_remote_ledger(
+        args.host, args.root, Path(args.ledger), Path(args.output) if args.output else None
+    )
+    print(f"hashed {count} new remote files", file=sys.stderr)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="photostow")
     sub = parser.add_subparsers(required=True)
@@ -90,6 +99,15 @@ def build_parser() -> argparse.ArgumentParser:
     library_missing_parser.add_argument("library")
     library_missing_parser.add_argument("archive_hashes")
     library_missing_parser.set_defaults(func=cmd_library_missing)
+
+    update_parser = sub.add_parser(
+        "update-remote-ledger", help="incrementally hash new files on a remote host"
+    )
+    update_parser.add_argument("host")
+    update_parser.add_argument("root")
+    update_parser.add_argument("ledger")
+    update_parser.add_argument("--output")
+    update_parser.set_defaults(func=cmd_update_remote_ledger)
 
     return parser
 

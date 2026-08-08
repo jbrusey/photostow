@@ -43,3 +43,12 @@ def missing_hash_records(
     for digest, name in parse_sha_lines(source_lines):
         if digest not in archived:
             yield digest, name
+
+
+def ledger_paths(lines: Iterable[str]) -> set[str]:
+    return {name for _, name in parse_sha_lines(lines)}
+
+
+def paths_not_in_ledger(current_paths: Iterable[str], ledger_lines: Iterable[str]) -> list[str]:
+    known = ledger_paths(ledger_lines)
+    return [path for path in sorted(current_paths) if path not in known]

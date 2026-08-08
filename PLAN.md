@@ -12,7 +12,7 @@ Use content hashes as the archive truth:
 2. Compare those hashes with the Synology hash ledger.
 3. Use the unmatched local originals to choose the export/import set.
 4. Export or copy only those unmatched photos.
-5. Refresh the Synology ledger after import.
+5. Refresh the Synology ledger incrementally after import: list remote paths, hash only paths not already in the ledger.
 
 Dates are only for narrowing the export/search window and optional folder naming. They are not used for correctness.
 
@@ -41,13 +41,17 @@ uv run photostow library-missing "$HOME/Pictures/Photos Library.photoslibrary" p
 
 ## Synology workflow
 
-Keep a shared archive ledger, e.g. `photos-oxygen-sha`, copied down before each run or generated on oxygen:
+Keep a shared archive ledger, e.g. `photos-oxygen-sha`, copied down before each run. Do not regenerate all Synology hashes; the archive is too large.
+
+Incremental update:
 
 ```sh
-ssh oxygen "find /var/services/photo -type f -not -path '*/@eaDir/*' -print0 | xargs -0 sha256sum" > photos-oxygen-sha
+uv run photostow update-remote-ledger oxygen /var/services/photo photos-oxygen-sha
+# or
+make update-oxygen-ledger
 ```
 
-For large archives, keep the existing incremental Makefile idea: reuse old hashes by filename and hash only new paths. Full archive scans are slow.
+This still scans remote filenames, but hashes only paths absent from the existing ledger. Assumption: archive paths are append-only; if a remote file is modified in place, force a rebuild for that path.
 
 ## Photos library workflow
 

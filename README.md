@@ -5,6 +5,7 @@ Small photo archive helper: inspect a Photos.app library read-only, hash local o
 ```sh
 uv sync
 make check
+uv run photostow update-remote-ledger oxygen /var/services/photo photos-oxygen-sha
 uv run photostow inspect-library "$HOME/Pictures/Photos Library.photoslibrary"
 uv run photostow library-missing "$HOME/Pictures/Photos Library.photoslibrary" photos-oxygen-sha > missing.tsv
 ```

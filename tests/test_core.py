@@ -1,6 +1,13 @@
 from pathlib import Path
 
-from photostow.core import hash_tree, missing_hash_records, parse_sha_lines, sha256_file
+from photostow.core import (
+    hash_tree,
+    ledger_paths,
+    missing_hash_records,
+    parse_sha_lines,
+    paths_not_in_ledger,
+    sha256_file,
+)
 
 
 def test_sha256_file(tmp_path: Path) -> None:
@@ -33,3 +40,14 @@ def test_hash_tree_lists_files_sorted(tmp_path: Path) -> None:
     (tmp_path / "a.txt").write_text("a", encoding="utf-8")
 
     assert [path.name for _, path in hash_tree(tmp_path)] == ["a.txt", "b.txt"]
+
+
+def test_ledger_paths_uses_path_column() -> None:
+    assert ledger_paths(["abc  /volume1/photo/a.jpg\n"]) == {"/volume1/photo/a.jpg"}
+
+
+def test_paths_not_in_ledger_hashes_only_new_remote_paths() -> None:
+    current = ["/volume1/photo/new.jpg", "/volume1/photo/old.jpg"]
+    ledger = ["abc  /volume1/photo/old.jpg\n"]
+
+    assert paths_not_in_ledger(current, ledger) == ["/volume1/photo/new.jpg"]
