@@ -8,13 +8,13 @@ Archive exported Photos.app images from several laptops and memory sticks to Syn
 
 Use content hashes as the archive truth:
 
-1. Export from Photos.app to a local staging folder.
-2. Hash files in the staging folder.
-3. Compare those hashes with the Synology hash ledger.
-4. Copy only files whose SHA-256 is not already archived.
+1. Hash original files inside the local Photos library.
+2. Compare those hashes with the Synology hash ledger.
+3. Use the unmatched local originals to choose the export/import set.
+4. Export or copy only those unmatched photos.
 5. Refresh the Synology ledger after import.
 
-Dates are only for choosing/exporting batches and optional folder naming. They are not used for correctness.
+Dates are only for narrowing the export/search window and optional folder naming. They are not used for correctness.
 
 ## Repository shape
 
@@ -32,11 +32,11 @@ photostow/
 uv sync
 make test
 
-# Hash an export folder from any laptop
-uv run photostow hash /path/to/export > staging.sha256
+# Hash a Photos library or export folder from any laptop
+uv run photostow hash "$HOME/Pictures/Photos Library.photoslibrary/originals" > local.sha256
 
-# Find files in staging that are not already on Synology
-uv run photostow missing staging.sha256 photos-oxygen-sha > missing.txt
+# Find local originals that are not already on Synology
+uv run photostow missing local.sha256 photos-oxygen-sha > missing.txt
 ```
 
 ## Synology workflow
@@ -49,6 +49,23 @@ ssh oxygen "find /var/services/photo -type f -not -path '*/@eaDir/*' -print0 | x
 
 For large archives, keep the existing incremental Makefile idea: reuse old hashes by filename and hash only new paths. Full archive scans are slow.
 
+## Photos library workflow
+
+Start with the library files themselves, not a manual export:
+
+1. Find local Photos originals under `Photos Library.photoslibrary/originals`.
+2. Hash them and compare against the Synology ledger.
+3. For unmatched originals, compute the earliest datestamp available from:
+   - EXIF `CreateDate` if available later via `exiftool`/`osxphotos`, or
+   - file modification time as the no-dependency fallback.
+4. Use that earliest date as the Photos.app export start date if manual export is still needed.
+
+Avoiding manual export:
+
+- For original camera files, copy the unmatched library originals directly.
+- For adjusted/edited versions, prefer `osxphotos export` if we need rendered edits; Photos.app has no good built-in CLI export.
+- Do not read Photos' private SQLite database directly unless `osxphotos` is not enough.
+
 ## Multi-laptop rule
 
 Each laptop can run the same tool locally. The only shared state is the Synology hash ledger. If two laptops archive the same photo, the second run sees the same SHA-256 and skips it.
@@ -60,5 +77,6 @@ Initial test coverage:
 - SHA-256 hashing is stable.
 - hash ledger parser handles spaces in paths.
 - missing-file detection compares hashes, not names or dates.
+- earliest datestamp is computed only from unmatched local files.
 
-No database, daemon, config format, or Photos library parsing until needed.
+No database, daemon, config format, or private Photos DB parsing until needed.
