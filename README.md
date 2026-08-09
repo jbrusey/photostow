@@ -76,7 +76,25 @@ Writes duplicate content groups on oxygen to:
 duplicate-groups.txt
 ```
 
-This uses the ledger hashes and only reports files that currently exist on Synology.
+This uses the ledger hashes and only reports files that currently exist on Synology. Within each group, the first path is the preferred one to keep:
+
+1. filenames containing `pixette_removed`
+2. standard year-folder files like `/var/services/photo/2023/name.jpg`
+3. everything else
+
+### `make delete-duplicates`
+
+Dry-run duplicate deletion from `duplicate-groups.txt`. Before each delete candidate it checks on oxygen that:
+
+- both files still exist
+- file sizes match
+- `cmp` says the contents match
+
+Any failed check stops processing. To actually delete, run the lower-level command explicitly:
+
+```sh
+uv run photostow delete-duplicates oxygen duplicate-groups.txt --yes
+```
 
 ## Lower-level commands
 

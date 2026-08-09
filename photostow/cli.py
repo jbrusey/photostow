@@ -6,7 +6,13 @@ import signal
 import sys
 from pathlib import Path
 
-from photostow.audit import remote_duplicate_groups, write_audit, write_duplicate_groups
+from photostow.audit import (
+    delete_duplicate_groups,
+    parse_duplicate_group_file,
+    remote_duplicate_groups,
+    write_audit,
+    write_duplicate_groups,
+)
 from photostow.core import hash_tree, missing_hash_records, parse_sha_lines
 from photostow.photos import (
     earliest_created,
@@ -130,6 +136,14 @@ def cmd_duplicate_groups(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_delete_duplicates(args: argparse.Namespace) -> int:
+    groups = parse_duplicate_group_file(Path(args.duplicate_groups))
+    count = delete_duplicate_groups(args.host, groups, dry_run=not args.yes)
+    action = "would delete" if not args.yes else "deleted"
+    print(f"{action} {count} duplicate files", file=sys.stderr)
+    return 0
+
+
 def cmd_audit_new_remote(args: argparse.Namespace) -> int:
     print(
         write_audit(
@@ -225,6 +239,14 @@ def build_parser() -> argparse.ArgumentParser:
     dup_parser.add_argument("ledger")
     dup_parser.add_argument("--output")
     dup_parser.set_defaults(func=cmd_duplicate_groups)
+
+    delete_dup_parser = sub.add_parser(
+        "delete-duplicates", help="delete all but first path in each duplicate group"
+    )
+    delete_dup_parser.add_argument("host")
+    delete_dup_parser.add_argument("duplicate_groups")
+    delete_dup_parser.add_argument("--yes", action="store_true")
+    delete_dup_parser.set_defaults(func=cmd_delete_duplicates)
 
     copy_parser = sub.add_parser("copy-missing", help="copy paths from missing TSV")
     copy_parser.add_argument("missing_tsv")
