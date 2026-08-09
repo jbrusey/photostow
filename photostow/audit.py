@@ -52,11 +52,25 @@ def time_range(bytes_total: int) -> str:
     return f"{low / 60:.1f}-{high / 60:.1f} minutes at 20-80 MiB/s"
 
 
-def duplicate_groups(lines: list[str]) -> list[list[str]]:
+def duplicate_groups(lines: list[str], current_paths: set[str] | None = None) -> list[list[str]]:
     by_hash: dict[str, list[str]] = {}
     for digest, path in parse_sha_lines(lines):
-        by_hash.setdefault(digest, []).append(path)
+        if current_paths is None or path in current_paths:
+            by_hash.setdefault(digest, []).append(path)
     return [paths for paths in by_hash.values() if len(paths) > 1]
+
+
+def remote_duplicate_groups(host: str, root: str, ledger: Path) -> list[list[str]]:
+    current = {file.path for file in remote_files(host, root)}
+    lines = ledger.read_text(encoding="utf-8").splitlines()
+    return duplicate_groups(lines, current)
+
+
+def write_duplicate_groups(groups: list[list[str]], output: Path) -> None:
+    output.write_text(
+        "\n\n".join("\n".join(group) for group in groups) + ("\n" if groups else ""),
+        encoding="utf-8",
+    )
 
 
 def write_audit(

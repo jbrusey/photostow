@@ -6,7 +6,7 @@ import signal
 import sys
 from pathlib import Path
 
-from photostow.audit import write_audit
+from photostow.audit import remote_duplicate_groups, write_audit, write_duplicate_groups
 from photostow.core import hash_tree, missing_hash_records, parse_sha_lines
 from photostow.photos import (
     earliest_created,
@@ -120,6 +120,16 @@ def cmd_copy_tree(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_duplicate_groups(args: argparse.Namespace) -> int:
+    groups = remote_duplicate_groups(args.host, args.root, Path(args.ledger))
+    if args.output:
+        write_duplicate_groups(groups, Path(args.output))
+    else:
+        write_duplicate_groups(groups, Path("/dev/stdout"))
+    print(f"duplicate groups: {len(groups)}", file=sys.stderr)
+    return 0
+
+
 def cmd_audit_new_remote(args: argparse.Namespace) -> int:
     print(
         write_audit(
@@ -206,6 +216,15 @@ def build_parser() -> argparse.ArgumentParser:
     audit_parser.add_argument("--workdir", default="audit-new-remote")
     audit_parser.add_argument("--hash", action="store_true")
     audit_parser.set_defaults(func=cmd_audit_new_remote)
+
+    dup_parser = sub.add_parser(
+        "duplicate-groups", help="report current remote duplicate groups from ledger hashes"
+    )
+    dup_parser.add_argument("host")
+    dup_parser.add_argument("root")
+    dup_parser.add_argument("ledger")
+    dup_parser.add_argument("--output")
+    dup_parser.set_defaults(func=cmd_duplicate_groups)
 
     copy_parser = sub.add_parser("copy-missing", help="copy paths from missing TSV")
     copy_parser.add_argument("missing_tsv")

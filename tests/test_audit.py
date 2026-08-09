@@ -25,5 +25,14 @@ def test_duplicate_groups_by_hash() -> None:
     assert groups == [["/one.jpg", "/three.jpg"]]
 
 
+def test_duplicate_groups_can_filter_current_paths() -> None:
+    groups = duplicate_groups(
+        ["abc  /one.jpg", "abc  /gone.jpg", "abc  /two.jpg"],
+        current_paths={"/one.jpg", "/two.jpg"},
+    )
+
+    assert groups == [["/one.jpg", "/two.jpg"]]
+
+
 def test_human_bytes() -> None:
     assert human_bytes(1024 * 1024) == "1.0 MiB"
