@@ -16,3 +16,8 @@ missing.txt
 review/
 review-*/
 audit-new-remote*/
+oxygen-*.txt
+oxygen-*.sizes
+oxygen-*.sha256
+oxygen-*.log
+photos-oxygen-sha.before-*
