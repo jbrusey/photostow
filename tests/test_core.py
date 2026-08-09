@@ -29,7 +29,7 @@ def test_missing_hash_records_compares_content_not_name() -> None:
         "same  /export/new-name.jpg\n",
         "new  /export/actually-new.jpg\n",
     ]
-    archive = ["same  /volume1/photo/old-name.jpg\n"]
+    archive = ["same  /var/services/photo/old-name.jpg\n"]
 
     assert list(missing_hash_records(source, archive)) == [
         ("new", "/export/actually-new.jpg")
@@ -44,14 +44,14 @@ def test_hash_tree_lists_files_sorted(tmp_path: Path) -> None:
 
 
 def test_ledger_paths_uses_path_column() -> None:
-    assert ledger_paths(["abc  /volume1/photo/a.jpg\n"]) == {"/volume1/photo/a.jpg"}
+    assert ledger_paths(["abc  /var/services/photo/a.jpg\n"]) == {"/var/services/photo/a.jpg"}
 
 
 def test_paths_not_in_ledger_hashes_only_new_remote_paths() -> None:
-    current = ["/volume1/photo/new.jpg", "/volume1/photo/old.jpg"]
-    ledger = ["abc  /volume1/photo/old.jpg\n"]
+    current = ["/var/services/photo/new.jpg", "/var/services/photo/old.jpg"]
+    ledger = ["abc  /var/services/photo/old.jpg\n"]
 
-    assert paths_not_in_ledger(current, ledger) == ["/volume1/photo/new.jpg"]
+    assert paths_not_in_ledger(current, ledger) == ["/var/services/photo/new.jpg"]
 
 
 def test_prune_ledger_lines_keeps_only_current_paths_once() -> None:

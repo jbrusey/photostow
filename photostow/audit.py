@@ -13,19 +13,8 @@ class RemoteFile:
     size: int
 
 
-def path_aliases(path: str) -> set[str]:
-    aliases = {path}
-    for a, b in (("/volume1/photo/", "/var/services/photo/"), ("/var/services/photo/", "/volume1/photo/")):
-        if path.startswith(a):
-            aliases.add(b + path[len(a) :])
-    return aliases
-
-
 def known_paths(ledger_lines: list[str]) -> set[str]:
-    paths: set[str] = set()
-    for _, path in parse_sha_lines(ledger_lines):
-        paths.update(path_aliases(path))
-    return paths
+    return {path for _, path in parse_sha_lines(ledger_lines)}
 
 
 def unknown_files(remote_files: list[RemoteFile], ledger_lines: list[str]) -> list[RemoteFile]:

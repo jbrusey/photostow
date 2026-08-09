@@ -37,34 +37,34 @@ def test_prune_remote_ledger_removes_deleted_paths(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
     ledger = tmp_path / "photos-oxygen-sha"
-    ledger.write_text("oldhash  /volume1/photo/old.jpg\nnewhash  /volume1/photo/new.jpg\n", encoding="utf-8")
-    monkeypatch.setattr(remote, "remote_find", lambda host, root: ["/volume1/photo/new.jpg"])
+    ledger.write_text("oldhash  /var/services/photo/old.jpg\nnewhash  /var/services/photo/new.jpg\n", encoding="utf-8")
+    monkeypatch.setattr(remote, "remote_find", lambda host, root: ["/var/services/photo/new.jpg"])
 
-    assert remote.prune_remote_ledger("oxygen", "/volume1/photo", ledger) == (2, 1)
-    assert ledger.read_text(encoding="utf-8") == "newhash  /volume1/photo/new.jpg\n"
+    assert remote.prune_remote_ledger("oxygen", "/var/services/photo", ledger) == (2, 1)
+    assert ledger.read_text(encoding="utf-8") == "newhash  /var/services/photo/new.jpg\n"
 
 
 def test_update_remote_ledger_hashes_only_new_paths(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
     ledger = tmp_path / "photos-oxygen-sha"
-    ledger.write_text("oldhash  /volume1/photo/old.jpg\n", encoding="utf-8")
+    ledger.write_text("oldhash  /var/services/photo/old.jpg\n", encoding="utf-8")
 
     monkeypatch.setattr(
         remote,
         "remote_find",
-        lambda host, root: ["/volume1/photo/old.jpg", "/volume1/photo/new.jpg"],
+        lambda host, root: ["/var/services/photo/old.jpg", "/var/services/photo/new.jpg"],
     )
     hashed: list[list[str]] = []
 
     def fake_sha256(host: str, paths: list[str]) -> str:
         hashed.append(paths)
-        return "newhash  /volume1/photo/new.jpg\n"
+        return "newhash  /var/services/photo/new.jpg\n"
 
     monkeypatch.setattr(remote, "remote_sha256", fake_sha256)
 
-    assert remote.update_remote_ledger("oxygen", "/volume1/photo", ledger) == 1
-    assert hashed == [["/volume1/photo/new.jpg"]]
+    assert remote.update_remote_ledger("oxygen", "/var/services/photo", ledger) == 1
+    assert hashed == [["/var/services/photo/new.jpg"]]
     assert ledger.read_text(encoding="utf-8") == (
-        "oldhash  /volume1/photo/old.jpg\nnewhash  /volume1/photo/new.jpg\n"
+        "oldhash  /var/services/photo/old.jpg\nnewhash  /var/services/photo/new.jpg\n"
     )

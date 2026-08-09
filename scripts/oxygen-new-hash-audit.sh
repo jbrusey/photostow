@@ -2,7 +2,7 @@
 set -euo pipefail
 
 HOST=${1:-oxygen}
-ROOT=${2:-/volume1/photo}
+ROOT=${2:-/var/services/photo}
 LEDGER=${3:-photos-oxygen-sha}
 WORKDIR=${4:-audit-new-remote-$(date +%Y%m%d-%H%M%S)}
 
