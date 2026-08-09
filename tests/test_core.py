@@ -6,6 +6,7 @@ from photostow.core import (
     missing_hash_records,
     parse_sha_lines,
     paths_not_in_ledger,
+    prune_ledger_lines,
     sha256_file,
 )
 
@@ -51,3 +52,13 @@ def test_paths_not_in_ledger_hashes_only_new_remote_paths() -> None:
     ledger = ["abc  /volume1/photo/old.jpg\n"]
 
     assert paths_not_in_ledger(current, ledger) == ["/volume1/photo/new.jpg"]
+
+
+def test_prune_ledger_lines_keeps_only_current_paths_once() -> None:
+    ledger = [
+        "old  /gone.jpg\n",
+        "keep  /keep.jpg\n",
+        "dupe  /keep.jpg\n",
+    ]
+
+    assert prune_ledger_lines(ledger, {"/keep.jpg"}) == ["keep  /keep.jpg"]

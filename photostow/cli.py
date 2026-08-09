@@ -20,6 +20,7 @@ from photostow.remote import (
     copy_stage,
     missing_records,
     paths_from_missing_tsv,
+    prune_remote_ledger,
     relative_paths,
     stage_by_year,
     update_remote_ledger,
@@ -132,6 +133,14 @@ def cmd_audit_new_remote(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_prune_remote_ledger(args: argparse.Namespace) -> int:
+    before, after = prune_remote_ledger(
+        args.host, args.root, Path(args.ledger), Path(args.output) if args.output else None
+    )
+    print(f"pruned ledger rows {before} -> {after}", file=sys.stderr)
+    return 0
+
+
 def cmd_update_remote_ledger(args: argparse.Namespace) -> int:
     count = update_remote_ledger(
         args.host, args.root, Path(args.ledger), Path(args.output) if args.output else None
@@ -178,6 +187,15 @@ def build_parser() -> argparse.ArgumentParser:
     update_parser.add_argument("ledger")
     update_parser.add_argument("--output")
     update_parser.set_defaults(func=cmd_update_remote_ledger)
+
+    prune_parser = sub.add_parser(
+        "prune-remote-ledger", help="remove ledger rows for remote paths that no longer exist"
+    )
+    prune_parser.add_argument("host")
+    prune_parser.add_argument("root")
+    prune_parser.add_argument("ledger")
+    prune_parser.add_argument("--output")
+    prune_parser.set_defaults(func=cmd_prune_remote_ledger)
 
     audit_parser = sub.add_parser(
         "audit-new-remote", help="estimate/hash only remote paths missing from ledger"

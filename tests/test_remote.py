@@ -33,6 +33,17 @@ def test_stage_by_year_hardlinks_flat_year_dirs(tmp_path: Path) -> None:
     assert (stage / "2025" / "photo.jpg").read_bytes() == b"photo"
 
 
+def test_prune_remote_ledger_removes_deleted_paths(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    ledger = tmp_path / "photos-oxygen-sha"
+    ledger.write_text("oldhash  /volume1/photo/old.jpg\nnewhash  /volume1/photo/new.jpg\n", encoding="utf-8")
+    monkeypatch.setattr(remote, "remote_find", lambda host, root: ["/volume1/photo/new.jpg"])
+
+    assert remote.prune_remote_ledger("oxygen", "/volume1/photo", ledger) == (2, 1)
+    assert ledger.read_text(encoding="utf-8") == "newhash  /volume1/photo/new.jpg\n"
+
+
 def test_update_remote_ledger_hashes_only_new_paths(
     tmp_path: Path, monkeypatch: Any
 ) -> None:

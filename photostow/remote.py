@@ -8,7 +8,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
-from photostow.core import paths_not_in_ledger
+from photostow.core import paths_not_in_ledger, prune_ledger_lines
 
 SSH = ["ssh", "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=120"]
 TAR = ["tar", "--no-xattrs"]
@@ -168,6 +168,15 @@ def copy_records_by_year(
                 copy_stage(stage, host, dest_root)
                 total += count
     return total
+
+
+def prune_remote_ledger(host: str, root: str, ledger: Path, output: Path | None = None) -> tuple[int, int]:
+    old = ledger.read_text(encoding="utf-8").splitlines() if ledger.exists() else []
+    current = set(remote_find(host, root))
+    pruned = prune_ledger_lines(old, current)
+    target = output or ledger
+    target.write_text("\n".join(pruned) + ("\n" if pruned else ""), encoding="utf-8")
+    return len(old), len(pruned)
 
 
 def update_remote_ledger(host: str, root: str, ledger: Path, output: Path | None = None) -> int:

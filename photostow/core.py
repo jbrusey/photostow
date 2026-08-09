@@ -52,3 +52,13 @@ def ledger_paths(lines: Iterable[str]) -> set[str]:
 def paths_not_in_ledger(current_paths: Iterable[str], ledger_lines: Iterable[str]) -> list[str]:
     known = ledger_paths(ledger_lines)
     return [path for path in sorted(current_paths) if path not in known]
+
+
+def prune_ledger_lines(ledger_lines: Iterable[str], current_paths: set[str]) -> list[str]:
+    rows = []
+    seen = set()
+    for digest, path in parse_sha_lines(ledger_lines):
+        if path in current_paths and path not in seen:
+            rows.append(f"{digest}  {path}")
+            seen.add(path)
+    return rows
