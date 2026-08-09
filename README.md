@@ -11,7 +11,7 @@ Photos library ──make missing──> missing.tsv ──make stage-review─�
                                                                       │
                                                                       │ delete unwanted files
                                                                       v
-                                                          make copy-reviewed-to-oxygen
+                                                          make archive-reviewed
 ```
 
 ## Setup
@@ -37,9 +37,21 @@ Override any of these on the `make` command line if needed.
 
 ### `make update-oxygen-ledger`
 
-Incrementally updates `photos-oxygen-sha` from Synology. It lists files under `/var/services/photo`, compares paths already in the ledger, and hashes only new paths.
+Incrementally updates the local `photos-oxygen-sha` from Synology. It lists files under `/var/services/photo`, compares paths already in the ledger, and hashes only new paths.
 
 Run this before comparing a laptop Photos library.
+
+### `make install-oxygen-ledger`
+
+Copies the local `photos-oxygen-sha` back to oxygen as `/var/services/photo/photos-oxygen-sha`. Before replacing it, oxygen rotates compressed backups:
+
+```text
+photos-oxygen-sha.1.gz
+photos-oxygen-sha.2.gz
+...
+```
+
+Default retention is 5 backups; override with `LEDGER_BACKUPS=10`.
 
 ### `make prune-oxygen-ledger`
 
@@ -66,7 +78,17 @@ The files are hardlinks to Photos originals, so this is quick and does not dupli
 
 ### `make copy-reviewed-to-oxygen`
 
-Copies the remaining files in `review/` into Synology year folders under `/var/services/photo`.
+Copies the remaining files in `review/` into Synology year folders under `/var/services/photo`. This does not update the ledger by itself.
+
+### `make archive-reviewed`
+
+Preferred final step. Runs:
+
+```text
+copy-reviewed-to-oxygen -> update-oxygen-ledger -> install-oxygen-ledger
+```
+
+Use this instead of `make copy-reviewed-to-oxygen` unless you deliberately want to inspect/update the ledger separately.
 
 ### `make duplicate-groups`
 

@@ -192,3 +192,23 @@ def update_remote_ledger(host: str, root: str, ledger: Path, output: Path | None
         text += "\n"
     target.write_text(text, encoding="utf-8")
     return len(new_paths)
+
+
+def install_remote_ledger(host: str, local_ledger: Path, remote_ledger: str, keep: int = 5) -> None:
+    quoted = shlex.quote(remote_ledger)
+    rotate = [
+        "set -e",
+        (
+            f"for i in $(seq {keep - 1} -1 1); do "
+            f"test -f {quoted}.$i.gz && mv {quoted}.$i.gz {quoted}.$((i+1)).gz || true; "
+            "done"
+        ),
+        f"test -f {quoted} && gzip -c {quoted} > {quoted}.1.gz || true",
+        f"cat > {quoted}.tmp",
+        f"mv {quoted}.tmp {quoted}",
+    ]
+    subprocess.run(
+        [*SSH, host, "; ".join(rotate)],
+        input=local_ledger.read_bytes(),
+        check=True,
+    )

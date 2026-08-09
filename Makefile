@@ -5,8 +5,10 @@ PHOTOS_LIBRARY ?= $(HOME)/Pictures/Photos Library.photoslibrary
 PHOTOS_ORIGINALS ?= $(PHOTOS_LIBRARY)/originals
 REVIEW_DIR ?= review
 DUPLICATE_REPORT ?= duplicate-groups.txt
+OXYGEN_LEDGER_REMOTE ?= $(OXYGEN_DIR)/photos-oxygen-sha
+LEDGER_BACKUPS ?= 5
 
-.PHONY: test lint typecheck check update-oxygen-ledger prune-oxygen-ledger missing duplicate-groups delete-duplicates stage-review copy-reviewed-to-oxygen clean
+.PHONY: test lint typecheck check update-oxygen-ledger install-oxygen-ledger prune-oxygen-ledger missing duplicate-groups delete-duplicates stage-review copy-reviewed-to-oxygen archive-reviewed clean
 
 test:
 	uv run pytest tests
@@ -21,6 +23,9 @@ check: test lint typecheck
 
 update-oxygen-ledger:
 	uv run photostow update-remote-ledger $(OXYGEN_HOST) $(OXYGEN_DIR) $(OXYGEN_LEDGER)
+
+install-oxygen-ledger:
+	uv run photostow install-remote-ledger $(OXYGEN_HOST) $(OXYGEN_LEDGER) $(OXYGEN_LEDGER_REMOTE) --keep $(LEDGER_BACKUPS)
 
 prune-oxygen-ledger:
 	uv run photostow prune-remote-ledger $(OXYGEN_HOST) $(OXYGEN_DIR) $(OXYGEN_LEDGER)
@@ -39,6 +44,8 @@ stage-review:
 
 copy-reviewed-to-oxygen:
 	uv run photostow copy-tree $(REVIEW_DIR) $(OXYGEN_HOST) $(OXYGEN_DIR)
+
+archive-reviewed: copy-reviewed-to-oxygen update-oxygen-ledger install-oxygen-ledger
 
 clean:
 	-rm -rf .pytest_cache .ruff_cache .mypy_cache build dist *.egg-info

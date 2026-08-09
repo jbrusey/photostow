@@ -24,6 +24,7 @@ from photostow.remote import (
     copy_paths_tar,
     copy_records_by_year,
     copy_stage,
+    install_remote_ledger,
     missing_records,
     paths_from_missing_tsv,
     prune_remote_ledger,
@@ -157,6 +158,12 @@ def cmd_audit_new_remote(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_install_remote_ledger(args: argparse.Namespace) -> int:
+    install_remote_ledger(args.host, Path(args.local_ledger), args.remote_ledger, args.keep)
+    print(f"installed {args.local_ledger} to {args.host}:{args.remote_ledger}", file=sys.stderr)
+    return 0
+
+
 def cmd_prune_remote_ledger(args: argparse.Namespace) -> int:
     before, after = prune_remote_ledger(
         args.host, args.root, Path(args.ledger), Path(args.output) if args.output else None
@@ -220,6 +227,15 @@ def build_parser() -> argparse.ArgumentParser:
     prune_parser.add_argument("ledger")
     prune_parser.add_argument("--output")
     prune_parser.set_defaults(func=cmd_prune_remote_ledger)
+
+    install_parser = sub.add_parser(
+        "install-remote-ledger", help="rotate and copy local ledger to remote"
+    )
+    install_parser.add_argument("host")
+    install_parser.add_argument("local_ledger")
+    install_parser.add_argument("remote_ledger")
+    install_parser.add_argument("--keep", type=int, default=5)
+    install_parser.set_defaults(func=cmd_install_remote_ledger)
 
     audit_parser = sub.add_parser(
         "audit-new-remote", help="estimate/hash only remote paths missing from ledger"
