@@ -7,11 +7,10 @@ import subprocess
 import sys
 import tempfile
 from collections import defaultdict
-from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from photostow.core import parse_sha_lines, paths_not_in_ledger, prune_ledger_lines
+from photostow.core import paths_not_in_ledger, prune_ledger_lines
 
 SSH = ["ssh", "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=120"]
 TAR = [shutil.which("gtar") or "tar", "--no-xattrs"]
@@ -82,37 +81,6 @@ def paths_from_missing_tsv(tsv: Path) -> list[Path]:
 
 def relative_paths(paths: list[Path], root: Path) -> list[str]:
     return [str(path.relative_to(root)) for path in paths]
-
-
-def migration_script(records: Iterable[tuple[str, str]], root: str, objects: str) -> str:
-    commands = ["set -e", f"mkdir -p {shlex.quote(objects)}"]
-    for digest, path in records:
-        object_path = f"{objects.rstrip('/')}/{digest[:2]}/{digest[2:]}"
-        commands.append(f"mkdir -p {shlex.quote(object_path.rsplit('/', 1)[0])}")
-        commands.append(
-            f"if test -e {shlex.quote(object_path)}; then "
-            f"ln -f -- {shlex.quote(object_path)} {shlex.quote(path)}; "
-            f"else ln -- {shlex.quote(path)} {shlex.quote(object_path)}; fi"
-        )
-    return "\n".join(commands) + "\n"
-
-
-def migrate_remote(host: str, root: str, dry_run: bool = True) -> int:
-    paths = remote_find(host, root)
-    output = remote_sha256(host, paths)
-    records = list(parse_sha_lines(output.splitlines()))
-    objects = root.rstrip("/") + "/.objects/sha256"
-    if dry_run:
-        for digest, path in records:
-            object_path = f"{objects}/{digest[:2]}/{digest[2:]}"
-            print(f"{path} -> {object_path}")
-    else:
-        subprocess.run(
-            [*SSH, host, "sh -s"],
-            input=migration_script(records, root, objects).encode(),
-            check=True,
-        )
-    return len(records)
 
 
 def copy_paths_tar(paths: list[str], source_root: Path, host: str, dest_root: str) -> int:
