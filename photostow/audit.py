@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import shlex
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,7 +29,8 @@ def unknown_files(remote_files: list[RemoteFile], ledger_lines: list[str]) -> li
 def remote_files(host: str, root: str) -> list[RemoteFile]:
     root = root.rstrip("/") + "/"
     script = (
-        f"find {root!r} -path '*/@eaDir' -prune -o -type f -print0 "
+        f"find {root!r} -path '*/@eaDir' -prune -o "
+        "-name 'photos-oxygen-sha*' -prune -o -type f -print0 "
         "| xargs -0 stat -c '%s %n'"
     )
     out = ssh_stdout(host, script)
@@ -104,16 +106,26 @@ def verify_duplicate(host: str, keep: str, duplicate: str) -> None:
 
 
 def delete_duplicate_groups(host: str, groups: list[list[str]], dry_run: bool = True) -> int:
-    deleted = 0
+    processed = 0
+    failures: list[tuple[str, str]] = []
     for group in groups:
         ordered = sort_duplicate_group(group)
         keep = ordered[0]
         for duplicate in ordered[1:]:
-            verify_duplicate(host, keep, duplicate)
+            try:
+                verify_duplicate(host, keep, duplicate)
+            except subprocess.CalledProcessError:
+                failures.append((keep, duplicate))
+                continue
             if not dry_run:
                 subprocess.run([*SSH, host, f"rm -- {shlex.quote(duplicate)}"], check=True)
-            deleted += 1
-    return deleted
+            processed += 1
+    if failures:
+        print(f"verification failed for {len(failures)} duplicate files:", file=sys.stderr)
+        for keep, duplicate in failures:
+            print(f"  keep: {keep}\n  skip: {duplicate}", file=sys.stderr)
+        raise SystemExit(1)
+    return processed
 
 
 def write_duplicate_groups(groups: list[list[str]], output: Path) -> None:

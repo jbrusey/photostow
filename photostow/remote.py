@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import os
 import shlex
+import shutil
 import subprocess
+import sys
 import tempfile
 from collections import defaultdict
 from dataclasses import dataclass
@@ -11,7 +13,8 @@ from pathlib import Path
 from photostow.core import paths_not_in_ledger, prune_ledger_lines
 
 SSH = ["ssh", "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=120"]
-TAR = ["tar", "--no-xattrs"]
+TAR = [shutil.which("gtar") or "tar", "--no-xattrs"]
+TAR_PROGRESS = ["--checkpoint=10000", "--checkpoint-action=dot"] if TAR[0].endswith("gtar") else []
 
 
 @dataclass(frozen=True)
@@ -33,7 +36,10 @@ def ssh_stdout(host: str, command: str) -> str:
 
 def remote_find(host: str, root: str) -> list[str]:
     find_root = root.rstrip("/") + "/"
-    cmd = f"find {shlex.quote(find_root)} -path '*/@eaDir' -prune -o -type f -print0"
+    cmd = (
+        f"find {shlex.quote(find_root)} -path '*/@eaDir' -prune -o "
+        "-name 'photos-oxygen-sha*' -prune -o -type f -print0"
+    )
     result = subprocess.run(
         [*SSH, host, cmd], check=True, stdout=subprocess.PIPE, stderr=None
     )
@@ -86,7 +92,7 @@ def copy_paths_tar(paths: list[str], source_root: Path, host: str, dest_root: st
         extract = f"cd {shlex.quote(dest_root)} && tar -xf -"
         subprocess.run([*SSH, host, mkdir], check=True)
         with subprocess.Popen(
-            [*TAR, "-cf", "-", "-C", str(source_root), "-T", f.name],
+            [*TAR, *TAR_PROGRESS, "-cf", "-", "-C", str(source_root), "-T", f.name],
             env={**os.environ, "COPYFILE_DISABLE": "1"},
             stdout=subprocess.PIPE,
         ) as tar:
@@ -121,8 +127,10 @@ def chmod_years(host: str, dest_root: str, years: list[str]) -> None:
     for year in years:
         path = f"{dest_root.rstrip('/')}/{year}"
         cmd = (
-            f"find {shlex.quote(path)} -type d -exec chmod u+rwx,go+rx {{}} + "
-            f"-o -type f -exec chmod u+rw,go+r {{}} +"
+            "set -e; "
+            f"find {shlex.quote(path)} -path '*/@eaDir' -prune -o "
+            f"-type d -exec chmod u+rwx,go+rwx {{}} + -o "
+            f"-type f -exec chmod u+rw,go+r {{}} +"
         )
         subprocess.run([*SSH, host, cmd], check=True)
 
@@ -134,7 +142,8 @@ def copy_stage(stage: Path, host: str, dest_root: str) -> None:
     with tempfile.NamedTemporaryFile("w", encoding="utf-8") as f:
         f.write("\n".join(files) + "\n")
         f.flush()
-        tar_cmd = [*TAR, "-cf", "-", "-C", str(stage), "-T", f.name]
+        print(f"copying {len(files)} files", file=sys.stderr)
+        tar_cmd = [*TAR, *TAR_PROGRESS, "-cf", "-", "-C", str(stage), "-T", f.name]
         tar = subprocess.Popen(
             tar_cmd,
             env={**os.environ, "COPYFILE_DISABLE": "1"},
