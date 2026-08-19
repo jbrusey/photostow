@@ -21,6 +21,18 @@ def test_paths_from_missing_tsv_and_relative_paths(tmp_path: Path) -> None:
     assert remote.relative_paths(paths, root) == ["A/photo.jpg"]
 
 
+def test_migration_script_uses_hash_fanout_and_hardlinks() -> None:
+    script = remote.migration_script(
+        [("abcdef123", "/var/services/photo/2022/photo.jpg")],
+        "/var/services/photo",
+        "/var/services/photo/.objects/sha256",
+    )
+
+    assert "mkdir -p /var/services/photo/.objects/sha256/ab" in script
+    assert "ln -- /var/services/photo/2022/photo.jpg" in script
+    assert "/var/services/photo/.objects/sha256/ab/cdef123" in script
+
+
 def test_stage_by_year_hardlinks_flat_year_dirs(tmp_path: Path) -> None:
     root = tmp_path / "originals"
     src = root / "A" / "photo.jpg"

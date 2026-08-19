@@ -25,6 +25,7 @@ from photostow.remote import (
     copy_records_by_year,
     copy_stage,
     install_remote_ledger,
+    migrate_remote,
     missing_records,
     paths_from_missing_tsv,
     prune_remote_ledger,
@@ -32,6 +33,13 @@ from photostow.remote import (
     stage_by_year,
     update_remote_ledger,
 )
+
+
+def cmd_oxygen_migrate(args: argparse.Namespace) -> int:
+    count = migrate_remote(args.host, args.root, dry_run=not args.apply)
+    action = "would migrate" if not args.apply else "migrated"
+    print(f"{action} {count} files", file=sys.stderr)
+    return 0
 
 
 def cmd_hash(args: argparse.Namespace) -> int:
@@ -183,6 +191,14 @@ def cmd_update_remote_ledger(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="photostow")
     sub = parser.add_subparsers(required=True)
+
+    migrate_parser = sub.add_parser(
+        "oxygen-migrate", help="build the remote content-addressed object store"
+    )
+    migrate_parser.add_argument("host")
+    migrate_parser.add_argument("root")
+    migrate_parser.add_argument("--apply", action="store_true")
+    migrate_parser.set_defaults(func=cmd_oxygen_migrate)
 
     hash_parser = sub.add_parser("hash", help="hash all files under a directory")
     hash_parser.add_argument("root")
