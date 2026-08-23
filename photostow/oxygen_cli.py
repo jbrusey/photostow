@@ -48,11 +48,13 @@ def main() -> int:
     if args.jobs != 1:
         parser.error("only --jobs 1 is currently supported")
     manifest_root = None
+    manifest_object_root = None
     if apply_manifest:
         try:
-            manifest_root = Path(
-                json.loads(apply_manifest.read_text(encoding="utf-8"))["root"]
-            )
+            manifest_data = json.loads(apply_manifest.read_text(encoding="utf-8"))
+            manifest_root = Path(manifest_data["root"])
+            if manifest_data.get("object_root"):
+                manifest_object_root = Path(manifest_data["object_root"])
         except (
             OSError,
             ValueError,
@@ -80,7 +82,7 @@ def main() -> int:
         f"root={root.resolve()} "
         f"target={args.target or '.'} path={args.path or '.'} "
         f"limit={args.limit if args.limit is not None else 'all'} "
-        f"object-root={(args.object_root or root / '.objects').resolve()}",
+        f"object-root={(args.object_root or manifest_object_root or root / '.objects').resolve()}",
         flush=True,
     )
     if apply_manifest:
