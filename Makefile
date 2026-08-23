@@ -8,7 +8,7 @@ DUPLICATE_REPORT ?= duplicate-groups.txt
 OXYGEN_LEDGER_REMOTE ?= $(OXYGEN_DIR)/photos-oxygen-sha
 LEDGER_BACKUPS ?= 5
 
-.PHONY: test lint typecheck check update-oxygen-ledger install-oxygen-ledger prune-oxygen-ledger missing duplicate-groups delete-duplicates stage-review copy-reviewed-to-oxygen archive-reviewed clean
+.PHONY: test lint format typecheck check review update-oxygen-ledger install-oxygen-ledger prune-oxygen-ledger missing duplicate-groups delete-duplicates stage-review archive-reviewed clean
 
 test:
 	uv run pytest tests
@@ -16,10 +16,17 @@ test:
 lint:
 	uv run ruff check photostow tests
 
+format:
+	uv run ruff format --check photostow tests
+
 typecheck:
 	uv run mypy
 
-check: test lint typecheck
+check: test lint format typecheck
+
+review: check
+	uv lock --check
+	git diff --check
 
 update-oxygen-ledger:
 	uv run photostow update-remote-ledger $(OXYGEN_HOST) $(OXYGEN_DIR) $(OXYGEN_LEDGER)
@@ -42,10 +49,11 @@ delete-duplicates:
 stage-review:
 	uv run photostow stage-review missing.tsv "$(PHOTOS_ORIGINALS)" $(REVIEW_DIR) --replace
 
-copy-reviewed-to-oxygen:
+# Copy first; only then refresh and install the archive ledger.
+archive-reviewed:
 	uv run photostow copy-tree $(REVIEW_DIR) $(OXYGEN_HOST) $(OXYGEN_DIR)
-
-archive-reviewed: copy-reviewed-to-oxygen update-oxygen-ledger install-oxygen-ledger
+	$(MAKE) update-oxygen-ledger
+	$(MAKE) install-oxygen-ledger
 
 clean:
 	-rm -rf .pytest_cache .ruff_cache .mypy_cache build dist *.egg-info

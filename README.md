@@ -19,6 +19,8 @@ Photos library ──make missing──> missing.tsv ──make stage-review─�
 ```sh
 uv sync
 make check
+# Full technical gate, including lock and diff checks:
+make review
 ```
 
 Defaults assume:
@@ -31,13 +33,17 @@ PHOTOS_LIBRARY=$HOME/Pictures/Photos Library.photoslibrary
 REVIEW_DIR=review
 ```
 
-Override any of these on the `make` command line if needed.
+Override any of these on the `make` command line if needed. Remote path
+output is currently expected to be UTF-8; non-UTF-8 filenames require production
+acceptance testing before support is claimed.
 
 ## Commands
 
 ### `make update-oxygen-ledger`
 
-Incrementally updates the local `photos-oxygen-sha` from Synology. It lists files under `/var/services/photo`, compares paths already in the ledger, and hashes only new paths.
+Incrementally updates the local `photos-oxygen-sha` from Synology. It lists files under `/var/services/photo`, compares paths already in the ledger, and hashes only new paths. Remote paths use NUL-delimited transport and are expected to be UTF-8; malformed discovery or SSH output fails before path/stat parsing with a concise `ValueError` diagnostic. Containment escapes are rejected separately. Remote hashing requires `sha256sum --zero` and rejects newline-containing paths because the ledger is line-based. Laptop CLI validation and filesystem failures return exit 1 with a concise stderr diagnostic. For `remote discovery output is not UTF-8` or `remote SSH output is not UTF-8`, check the remote locale/transport bytes; for `remote discovery path escapes root` or `remote audit path escapes root`, check the requested root and reported paths before retrying. Rerun focused local validation with `uv run pytest tests/test_remote.py tests/test_audit.py tests/test_cli.py`; these tests use mocks, and `ASSUMPTIONS.md` plus local results are not production evidence; they do not replace live Oxygen acceptance, and local tests alone do not approve a production migration; the CLI test `test_documented_status_files_exist` also verifies the linked status files exist, and its README/technical-review name parity is checked automatically; if that check fails, update `README.md` and `TECHNICAL_REVIEW.md` together with the documented test name; the parity assertion lives in [`tests/test_cli.py`](tests/test_cli.py). `ValueError`, `UnicodeDecodeError`, and `OSError` validation/filesystem failures exit 1; the direct filesystem guard is `test_main_reports_os_error` in [`tests/test_cli.py`](tests/test_cli.py), and stderr preserves errno details such as `[Errno 13]`. For example, a validation failure emits: `photostow failed: remote discovery output is not UTF-8`; correct the remote transport before rerunning; do not retry unchanged input. Decode failures retain codec, byte position, and reason details. This is the same action boundary recorded in the technical review and covered by the parity assertions in [`tests/test_cli.py`](tests/test_cli.py), especially `test_readme_names_documented_status_test`; keep this corrective wording synchronized.
+
+See [TECHNICAL_REVIEW.md](TECHNICAL_REVIEW.md) for current acceptance status and [ASSUMPTIONS.md](ASSUMPTIONS.md) for unavailable Oxygen prerequisites. See [PROGRESS.md](PROGRESS.md) for parity-test iteration evidence; repair a stale history link by restoring `PROGRESS.md` and rerunning the focused CLI test.
 
 Run this before comparing a laptop Photos library.
 
@@ -76,19 +82,10 @@ review/2024/file.mov
 
 The files are hardlinks to Photos originals, so this is quick and does not duplicate disk space. Delete unwanted files from `review/`; do not edit them.
 
-### `make copy-reviewed-to-oxygen`
-
-Copies the remaining files in `review/` into Synology year folders under `/var/services/photo`. This does not update the ledger by itself.
-
 ### `make archive-reviewed`
 
-Preferred final step. Runs:
-
-```text
-copy-reviewed-to-oxygen -> update-oxygen-ledger -> install-oxygen-ledger
-```
-
-Use this instead of `make copy-reviewed-to-oxygen` unless you deliberately want to inspect/update the ledger separately.
+Copies the remaining files in `review/` into Synology year folders under `/var/services/photo`,
+then updates and reinstalls the ledger. This is the only supported reviewed-copy workflow.
 
 ### `make duplicate-groups`
 
@@ -122,4 +119,47 @@ uv run photostow delete-duplicates oxygen duplicate-groups.txt --yes
 
 The Makefile wraps the CLI. For custom paths, use `uv run photostow --help` and subcommand help.
 
-See [PLAN.md](PLAN.md).
+## Content-addressed Oxygen commands
+
+These commands run locally on Oxygen with Python 3.8. Migration defaults to
+dry-run; ingest applies changes, while verify and GC are report-only:
+
+```sh
+oxygen-migrate 2006 --dry-run --limit 10 --exclude 'incoming-*' \
+  --jobs 1 --nice 10 --manifest trial.json
+oxygen-migrate --apply trial.json
+oxygen-ingest incoming.jpg /var/services/photo/2025/incoming.jpg \
+  --root /var/services/photo
+oxygen-verify /var/services/photo/.objects --limit 10 --verbose
+oxygen-gc /var/services/photo/.objects
+```
+
+A positional migration target is relative to `/var/services/photo`; `--path`
+adds a file or subtree beneath that target. For another archive, use the
+explicit form `oxygen-migrate --root /archive 2006 --path photo.jpg`.
+
+Use `--object-root` when the object store is elsewhere on the same filesystem.
+For a custom object-root name, pass the archive root to GC as well:
+`oxygen-gc /archive-objects --root /var/services/photo`.
+Migration hashes serially (`--jobs 1`) and lowers CPU priority by default;
+use `--verbose` for one line per discovered/hashed file. Without it, output is
+bounded to startup and summary progress. `--limit` bounds files after discovery;
+it does not make a large directory walk cheap. Use `--path` for a genuinely small
+trial subtree. A higher `--jobs` value is rejected
+until parallel hashing is implemented. Repeat
+`--exclude PATTERN` to omit files or subtrees.
+Review a manifest before applying it; apply refuses files whose identity, size,
+mtime, or digest changed. `oxygen-gc` is report-only and does not delete files. It verifies the object
+store first, lists link-count-one candidates, and reports retained objects with
+other link counts; malformed or corrupt stores produce no candidate report.
+
+Visible photos and content objects are hardlinks, so they share inode metadata.
+Replacing a visible file can change its permissions, timestamps, ownership, ACLs,
+and extended attributes. Object contents are protected by policy and verification,
+not by separate permissions: editing any hardlink edits the shared inode. Test
+Pixette/WebDAV rename and write behavior on a representative directory before
+migrating production data. Passing local `make review` is not production approval;
+Production Oxygen/Synology acceptance remains pending because the environment is unavailable; complete the technical-review checklist before approval.
+
+See [PLAN.md](PLAN.md), the [technical review checklist](TECHNICAL_REVIEW.md),
+and [ASSUMPTIONS.md](ASSUMPTIONS.md) for environment limits.

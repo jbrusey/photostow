@@ -7,7 +7,7 @@ name = "photostow"
 version = "0.1.0"
 description = "Archive exported photos by content hash"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.8"
 dependencies = [
     "pytest",
     "ruff",
@@ -16,13 +16,17 @@ dependencies = [
 
 [project.scripts]
 photostow = "photostow.cli:main"
+oxygen-migrate = "photostow.oxygen_cli:main"
+oxygen-verify = "photostow.oxygen_verify_cli:main"
+oxygen-ingest = "photostow.oxygen_ingest_cli:main"
+oxygen-gc = "photostow.oxygen_gc_cli:main"
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py38"
 line-length = 88
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.10"
 files = ["photostow", "tests"]
 show_error_codes = true
 pretty = true

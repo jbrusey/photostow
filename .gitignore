@@ -8,6 +8,7 @@ build/
 dist/
 *.egg-info/
 .DS_Store
+.pi-loop-log.jsonl
 *.sha256
 photos-*-sha
 missing*.tsv

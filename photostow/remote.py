@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import posixpath
+import re
 import shlex
 import shutil
 import subprocess
@@ -14,7 +16,31 @@ from photostow.core import paths_not_in_ledger, prune_ledger_lines
 
 SSH = ["ssh", "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=120"]
 TAR = [shutil.which("gtar") or "tar", "--no-xattrs"]
-TAR_PROGRESS = ["--checkpoint=10000", "--checkpoint-action=dot"] if TAR[0].endswith("gtar") else []
+TAR_PROGRESS = (
+    ["--checkpoint=10000", "--checkpoint-action=dot"] if TAR[0].endswith("gtar") else []
+)
+REMOTE_EXCLUDES = (
+    "-path '*/@eaDir' -prune -o "
+    "-path '*/.objects' -prune -o "
+    "-name 'photos-oxygen-sha*' -prune -o "
+)
+
+
+def remote_path_beneath(root: str, path: str) -> bool:
+    """Return whether path is a strict, normalized descendant of root."""
+    if not root or not root.strip() or "\0" in root or "\0" in path:
+        return False
+    normalized_root = posixpath.normpath(root)
+    normalized_path = posixpath.normpath(path)
+    if normalized_root.startswith("//"):
+        normalized_root = "/" + normalized_root.lstrip("/")
+    if normalized_path.startswith("//"):
+        normalized_path = "/" + normalized_path.lstrip("/")
+    if normalized_root == ".":
+        return normalized_path not in (".", "..") and not normalized_path.startswith(
+            ("../", "/")
+        )
+    return normalized_path.startswith(normalized_root.rstrip("/") + "/")
 
 
 @dataclass(frozen=True)
@@ -31,20 +57,33 @@ class MissingRecord:
 
 def ssh_stdout(host: str, command: str) -> str:
     result = subprocess.run([*SSH, host, command], check=True, stdout=subprocess.PIPE)
-    return result.stdout.decode()
+    try:
+        return result.stdout.decode()
+    except UnicodeDecodeError as exc:
+        raise ValueError("remote SSH output is not UTF-8") from exc
 
 
 def remote_find(host: str, root: str) -> list[str]:
+    if not root or not root.strip():
+        raise ValueError("remote discovery root must not be empty")
+    if "\0" in root:
+        raise ValueError("remote discovery root must not contain NUL")
     find_root = root.rstrip("/") + "/"
-    cmd = (
-        f"find {shlex.quote(find_root)} -path '*/@eaDir' -prune -o "
-        "-path '*/.objects' -prune -o -name 'photos-oxygen-sha*' -prune -o "
-        "-type f -print0"
-    )
+    cmd = f"find {shlex.quote(find_root)} {REMOTE_EXCLUDES}-type f -print0"
     result = subprocess.run(
         [*SSH, host, cmd], check=True, stdout=subprocess.PIPE, stderr=None
     )
-    return [path for path in result.stdout.decode().split("\0") if path]
+    try:
+        output = result.stdout.decode()
+    except UnicodeDecodeError as exc:
+        raise ValueError("remote discovery output is not UTF-8") from exc
+    paths = [path for path in output.split("\0") if path]
+    normalized_paths = []
+    for path in paths:
+        if not remote_path_beneath(find_root, path):
+            raise ValueError(f"remote discovery path escapes root: {path}")
+        normalized_paths.append(posixpath.normpath(path))
+    return list(dict.fromkeys(normalized_paths))
 
 
 def remote_sha256(host: str, paths: list[str]) -> str:
@@ -52,25 +91,42 @@ def remote_sha256(host: str, paths: list[str]) -> str:
         return ""
     data = "\0".join(paths).encode() + b"\0"
     result = subprocess.run(
-        [*SSH, host, "xargs -0 sha256sum"],
+        [*SSH, host, "xargs -0 sha256sum --zero"],
         input=data,
         check=True,
         stdout=subprocess.PIPE,
         stderr=None,
     )
-    return result.stdout.decode()
+    try:
+        output = result.stdout.decode()
+    except UnicodeDecodeError as exc:
+        raise ValueError("remote hash output is not UTF-8") from exc
+    records = [record for record in output.split("\0") if record]
+    for record in records:
+        if "\n" in record:
+            raise ValueError("remote hash output contains unsupported newline path")
+        if not re.fullmatch(r"[0-9a-fA-F]{64}  .+", record):
+            raise ValueError("remote hash output is malformed")
+    return "\n".join(records) + ("\n" if records else "")
 
 
 def missing_records(tsv: Path) -> list[MissingRecord]:
     with tsv.open(encoding="utf-8") as f:
         header = next(f, "").rstrip("\n").split("\t")
         if header != ["sha256", "created", "adjusted", "path"]:
-            raise ValueError("missing TSV must have columns: sha256, created, adjusted, path")
+            raise ValueError(
+                "missing TSV must have columns: sha256, created, adjusted, path"
+            )
         rows = []
         for line in f:
             if not line.strip():
                 continue
-            digest, created, adjusted, path = line.rstrip("\n").split("\t")
+            fields = line.rstrip("\n").split("\t")
+            if len(fields) != 4:
+                raise ValueError("missing TSV row must have four columns")
+            digest, created, adjusted, path = fields
+            if adjusted not in {"0", "1"}:
+                raise ValueError("missing TSV adjusted flag must be 0 or 1")
             rows.append(MissingRecord(digest, created, adjusted == "1", Path(path)))
         return rows
 
@@ -80,20 +136,53 @@ def paths_from_missing_tsv(tsv: Path) -> list[Path]:
 
 
 def relative_paths(paths: list[Path], root: Path) -> list[str]:
-    return [str(path.relative_to(root)) for path in paths]
+    relative = []
+    for path in paths:
+        try:
+            relative.append(str(path.relative_to(root)))
+        except ValueError as error:
+            raise ValueError(f"path is outside source root: {path}") from error
+    return relative
 
 
-def copy_paths_tar(paths: list[str], source_root: Path, host: str, dest_root: str) -> int:
+def validate_source_paths(paths: list[str], source_root: Path) -> None:
+    resolved_root = source_root.resolve()
+    for path in paths:
+        if Path(path).is_absolute():
+            raise ValueError(f"source path must be relative: {path}")
+        candidate = source_root / path
+        try:
+            candidate.resolve().relative_to(resolved_root)
+        except ValueError:
+            raise ValueError(f"source path escapes source root: {path}")
+        if candidate.is_symlink():
+            raise ValueError(f"refusing symlink source path: {path}")
+
+
+def copy_paths_tar(
+    paths: list[str], source_root: Path, host: str, dest_root: str
+) -> int:
     if not paths:
         return 0
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8") as f:
-        f.write("\n".join(paths) + "\n")
+    validate_source_paths(paths, source_root)
+    with tempfile.NamedTemporaryFile("wb") as f:
+        f.write("\0".join(paths).encode() + b"\0")
         f.flush()
         mkdir = f"mkdir -p {shlex.quote(dest_root)}"
         extract = f"cd {shlex.quote(dest_root)} && tar -xf -"
         subprocess.run([*SSH, host, mkdir], check=True)
         with subprocess.Popen(
-            [*TAR, *TAR_PROGRESS, "-cf", "-", "-C", str(source_root), "-T", f.name],
+            [
+                *TAR,
+                *TAR_PROGRESS,
+                "-cf",
+                "-",
+                "-C",
+                str(source_root),
+                "--null",
+                "-T",
+                f.name,
+            ],
             env={**os.environ, "COPYFILE_DISABLE": "1"},
             stdout=subprocess.PIPE,
         ) as tar:
@@ -107,13 +196,23 @@ def copy_paths_tar(paths: list[str], source_root: Path, host: str, dest_root: st
 
 def stage_by_year(records: list[MissingRecord], source_root: Path, stage: Path) -> int:
     count = 0
+    resolved_root = source_root.resolve()
+    if stage.is_symlink():
+        raise ValueError(f"refusing symlink review stage: {stage}")
     for record in records:
         rel = record.path.relative_to(source_root)
         src = source_root / rel
-        if not src.is_file():
+        if src.is_symlink() or not src.is_file():
+            continue
+        try:
+            src.resolve().relative_to(resolved_root)
+        except ValueError:
             continue
         name = src.name
-        dest = stage / record.year / name
+        year_dir = stage / record.year
+        if year_dir.is_symlink():
+            raise ValueError(f"refusing symlink review year: {year_dir}")
+        dest = year_dir / name
         if dest.exists():
             dest = stage / record.year / f"{record.digest[:12]}-{name}"
         if dest.exists():
@@ -137,14 +236,32 @@ def chmod_years(host: str, dest_root: str, years: list[str]) -> None:
 
 
 def copy_stage(stage: Path, host: str, dest_root: str) -> None:
+    years = sorted(
+        path.name for path in stage.iterdir() if path.is_dir() and not path.is_symlink()
+    )
+    files = [
+        str(path.relative_to(stage))
+        for path in stage.rglob("*")
+        if path.is_file() and not path.is_symlink()
+    ]
+    if not files:
+        return
     subprocess.run([*SSH, host, f"mkdir -p {shlex.quote(dest_root)}"], check=True)
-    years = sorted(path.name for path in stage.iterdir() if path.is_dir())
-    files = [str(path.relative_to(stage)) for path in stage.rglob("*") if path.is_file()]
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8") as f:
-        f.write("\n".join(files) + "\n")
+    with tempfile.NamedTemporaryFile("wb") as f:
+        f.write("\0".join(files).encode() + b"\0")
         f.flush()
         print(f"copying {len(files)} files", file=sys.stderr)
-        tar_cmd = [*TAR, *TAR_PROGRESS, "-cf", "-", "-C", str(stage), "-T", f.name]
+        tar_cmd = [
+            *TAR,
+            *TAR_PROGRESS,
+            "-cf",
+            "-",
+            "-C",
+            str(stage),
+            "--null",
+            "-T",
+            f.name,
+        ]
         tar = subprocess.Popen(
             tar_cmd,
             env={**os.environ, "COPYFILE_DISABLE": "1"},
@@ -180,7 +297,9 @@ def copy_records_by_year(
     return total
 
 
-def prune_remote_ledger(host: str, root: str, ledger: Path, output: Path | None = None) -> tuple[int, int]:
+def prune_remote_ledger(
+    host: str, root: str, ledger: Path, output: Path | None = None
+) -> tuple[int, int]:
     old = ledger.read_text(encoding="utf-8").splitlines() if ledger.exists() else []
     current = set(remote_find(host, root))
     pruned = prune_ledger_lines(old, current)
@@ -189,10 +308,12 @@ def prune_remote_ledger(host: str, root: str, ledger: Path, output: Path | None 
     return len(old), len(pruned)
 
 
-def update_remote_ledger(host: str, root: str, ledger: Path, output: Path | None = None) -> int:
+def update_remote_ledger(
+    host: str, root: str, ledger: Path, output: Path | None = None
+) -> int:
     old = ledger.read_text(encoding="utf-8").splitlines() if ledger.exists() else []
     new_paths = paths_not_in_ledger(remote_find(host, root), old)
-    new_hashes = remote_sha256(host, new_paths)
+    new_hashes = remote_sha256(host, new_paths) if new_paths else ""
     target = output or ledger
     text = "\n".join(old)
     if text and new_hashes:
@@ -204,7 +325,9 @@ def update_remote_ledger(host: str, root: str, ledger: Path, output: Path | None
     return len(new_paths)
 
 
-def install_remote_ledger(host: str, local_ledger: Path, remote_ledger: str, keep: int = 5) -> None:
+def install_remote_ledger(
+    host: str, local_ledger: Path, remote_ledger: str, keep: int = 5
+) -> None:
     quoted = shlex.quote(remote_ledger)
     rotate = [
         "set -e",

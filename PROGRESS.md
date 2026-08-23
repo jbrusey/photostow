@@ -1,0 +1,1872 @@
+# Progress
+
+- Iteration 1: added deterministic subtree selection and bounded `--limit` support to `oxygen-migrate`.
+- Added startup reporting and tests covering exclusions, sorting, subtree selection, and root safety.
+- Iteration 2: changed migration hashing to emit flushed per-file progress before each hash; fixed `--limit 0` startup reporting.
+- Iteration 3: added configurable `--object-root` and same-filesystem validation before migration.
+- Iteration 4: added dry-run JSON manifests with reviewed paths, SHA-256 digests, sizes, and device/inode/timestamp identities.
+- Iteration 5: added manifest-backed apply; changed or relocated files are rejected before object linking. CLI accepts `--apply trial.json`.
+- Iteration 6: added pre/post stat checks around hashing and excluded symlinks from migration selection.
+- Iteration 7: existing content objects are now rehashed and rejected when corrupt before reuse.
+- Iteration 8: added non-blocking POSIX locking so concurrent migration operations fail safely; lock files are excluded from selection.
+- Iteration 9: made object creation resilient to `os.link` races and verified newly created objects before use.
+- Iteration 10: added object-store verification for malformed SHA-256 paths and content mismatches.
+- Iteration 11: exposed `oxygen-migrate` and `oxygen-verify` console entry points; verification exits nonzero on errors.
+- Iteration 12: made `--path` support selecting an individual file, as documented for small trials.
+- Iteration 13: added explicit `--nice` CPU-priority handling; unsupported or denied scheduling changes are reported and return failure.
+- Iteration 14: apply now checks free bytes and available inodes before modifying the archive.
+- Iteration 15: migration CLI errors now produce concise diagnostics and status 1 instead of tracebacks.
+- Iteration 16: aligned package and Ruff/mypy targets with Oxygen's Python 3.8 runtime; fixed the affected test annotation.
+- Iteration 16 continued: added atomic incoming-file ingest with verified content objects and visible hardlinks.
+- Iteration 17: exposed `oxygen-ingest` with concise success/failure CLI reporting.
+- Iteration 18: added report-only `oxygen-gc`, listing verified objects with link count one without deleting them.
+- Iteration 19: added bounded `oxygen-verify --path/--limit` selection and flushed per-object progress.
+- Iteration 20: documented Oxygen commands, manifest review, report-only GC, and hardlink metadata/immutability limitations.
+- Iteration 21: verifier now reports symlinked object entries instead of hashing outside the object store; GC ignores them.
+- Iteration 22: verifier now reports malformed shard directories and other unexpected namespace entries.
+- Iteration 23: added documented `oxygen-migrate --root ARCHIVE TARGET` syntax while retaining positional-root compatibility.
+- Iteration 24: added flushed directory-discovery progress before migration hashing.
+- Iteration 25: missing roots and selections now fail explicitly instead of reporting a misleading zero-file success.
+- Iteration 26: aligned migration CLI defaults with `/var/services/photo`; positional targets such as `2006` now select beneath that root.
+- Iteration 27: directory-walk permission errors now propagate instead of silently skipping unreadable paths.
+- Iteration 28: verifier limits file hashing and namespace checks for bounded trial runs.
+- Iteration 29: ingest now shares migration's non-blocking operation lock and rejects concurrent runs.
+- Iteration 30: fixed Python 3.8 runtime compatibility (`datetime.UTC`) and cleared all mypy errors.
+- Iteration 31: regenerated `uv.lock` for the Python 3.8 constraint; lock check, tests, and mypy pass.
+- Iteration 32: ingest now creates the visible hardlink with atomic no-overwrite semantics, preventing destination races from clobbering files.
+- Iteration 33: added explicit serial resource semantics; `--jobs 1` is accepted and unsupported parallel values are rejected.
+- Iteration 34: object reuse now rejects symlink targets instead of trusting content outside the object store.
+- Iteration 35: shared operation locking now validates archive roots before creating lock files.
+- Iteration 36: added repeatable glob exclusions via `oxygen-migrate --exclude` for files and subtrees.
+- Iteration 37: versioned manifests with schema `1`; apply rejects unsupported manifest structures.
+- Iteration 38: manifest apply now validates required top-level and per-record fields before touching files.
+- Iteration 39: `oxygen-gc` now reports corrupt candidates cleanly and exits nonzero instead of showing a traceback.
+- Iteration 40: GC can share the archive operation lock, preventing reports from racing with migration or ingest.
+- Iteration 41: documented migration exclusions, serial worker limits, and CPU niceness in README.
+- Iteration 42: ingest now treats an existing same-digest destination as a no-op and refuses differing content.
+- Iteration 43: cross-filesystem ingest copies now flush and `fsync` temporary objects before publication.
+- Iteration 44: migration/ingest hashing now uses `O_NOFOLLOW` descriptors with `fstat` identity checks.
+- Iteration 45: gated per-file migration discovery/hash/action output behind `--verbose`; default output is bounded.
+- Iteration 46: migration startup output now includes UTC start time and explicit dry-run/apply mode.
+- Iteration 47: migration summaries now include elapsed seconds and processed-file rate.
+- Iteration 48: migration CLI now reports Ctrl-C interruption cleanly with status 130.
+- Iteration 49: dry-run manifests are now flushed and atomically replaced via a temporary sibling.
+- Iteration 50: migration continues hashing after per-file errors, then returns a concise batch failure summary.
+- Iteration 51: per-record object verification/link errors are collected while remaining migration records continue.
+- Iteration 52: manifest apply now validates all entries and continues past changed files before returning a batch failure.
+- Iteration 53: manifest apply now safely reruns after completed relinks when content still matches the reviewed digest.
+- Iteration 54: verifier output is bounded by default; `--verbose` enables per-object progress and startup output always identifies the run.
+- Iteration 55: GC now requires a clean full object verification before reporting candidates.
+- Iteration 56: `oxygen-gc` now reports retained objects with link counts other than one alongside candidates.
+- Iteration 57: GC candidate and retained counts are now computed under one shared operation lock.
+- Iteration 58: migration discovery now prunes a custom in-tree object root, not only `.objects`.
+- Iteration 59: migration CLI now composes positional targets with `--path` selections beneath that target.
+- Iteration 60: ingest now prints flushed startup context before filesystem work.
+- Iteration 61: ingest success summaries now include elapsed time alongside the digest.
+- Iteration 62: ingest now performs free-byte and free-inode preflight checks before publishing.
+- Iteration 63: formatted the Oxygen implementation and CLI modules; full checks remain clean.
+- Iteration 64: formatted all Python modules and tests; repository-wide Ruff format checks now pass.
+- Iteration 65: added Ruff formatting to the Makefile quality gate (`make check`).
+- Iteration 66: single-file `--path` selections now honor repeatable `--exclude` patterns.
+- Iteration 67: GC now prints flushed startup context and elapsed report timing.
+- Iteration 68: verifier summaries now include elapsed scan timing.
+- Iteration 69: apply now preflights hardlink support before archive changes.
+- Iteration 70: ingest now preflights hardlink support before copying or publishing objects.
+- Iteration 71: hardlink preflight now uses two independently allocated temporary paths, avoiding probe-name collisions.
+- Iteration 72: migration validates object-root filesystem placement before discovery and hashing.
+- Iteration 73: active dry-run manifests are excluded from subsequent migration discovery.
+- Iteration 74: migration hardlink publication now uses `follow_symlinks=False` to close a post-hash symlink race.
+- Iteration 75: ingest object and destination links now also use `follow_symlinks=False`.
+- Iteration 76: hardlink capability probes now use no-follow link semantics too.
+- Iteration 77: GC now validates archive/object-root filesystem placement before scanning.
+- Iteration 78: default migration hashing now emits a first-file and 30-second heartbeat without per-file log spam.
+- Iteration 79: default migration discovery now emits a matching first-directory/30-second heartbeat.
+- Iteration 80: documented GC verification, candidate, and retained-object reporting semantics.
+- Iteration 81: added explicit `--dry-run` migration syntax and rejected contradictory apply/dry-run flags.
+- Iteration 82: updated README migration examples to use explicit `--dry-run` syntax.
+- Iteration 83: apply startup now resolves manifest roots before reporting and handles malformed manifest files cleanly.
+- Iteration 84: verifier Ctrl-C now returns status 130 with an incomplete-run diagnostic.
+- Iteration 85: GC Ctrl-C now returns status 130 with an incomplete-report diagnostic.
+- Iteration 86: ingest Ctrl-C now returns status 130 with an incomplete-publish diagnostic.
+- Iteration 87: documented default-root target/path composition and explicit `--root` usage.
+- Iteration 88: corrected README mode documentation so ingest is clearly identified as applying changes.
+- Iteration 89: relative ingest destinations now resolve beneath the required archive root.
+- Iteration 90: ingest startup and success output now report resolved source, destination, root, and object-root paths.
+- Iteration 91: moved operation locks to deterministic system-temporary paths so dry-runs do not create archive entries.
+- Iteration 92: hashing now fails clearly when the platform lacks `O_NOFOLLOW`, preserving symlink safety.
+- Iteration 93: cross-filesystem ingest copies now read sources through the same no-follow descriptor policy as hashing.
+- Iteration 94: hashing now confirms the final pathname still points to the opened device/inode.
+- Iteration 95: added `make review` covering tests, lint/format/type checks, lock consistency, and diff whitespace.
+- Iteration 96: documented the full `make review` technical gate in README setup.
+- Iteration 97: object-root validation now rejects existing files before filesystem scans or writes.
+- Iteration 98: object-root validation now rejects symlink directories before resolving storage paths.
+- Iteration 99: standalone verification now rejects symlink object-root arguments consistently.
+- Iteration 100: strengthened dry-run coverage to assert no archive lock or object store is created.
+- Iteration 101: added regression coverage rejecting contradictory `--apply --dry-run` modes.
+- Iteration 102: added end-to-end CLI coverage for malformed manifest handling.
+- Iteration 103: strengthened relative-ingest CLI coverage to assert the root-contained file is published.
+- Iteration 104: clarified README resource-control and bounded-output wording.
+- Iteration 105: added `TECHNICAL_REVIEW.md` separating verified local guarantees from required real-Oxygen acceptance tests.
+- Iteration 106: linked the technical review checklist from README.
+- Iteration 107: ignored generated `.pi-loop-log.jsonl` state so repository status stays reviewable.
+- Iteration 108: added GC coverage proving visible-hardlinked objects are retained, not candidates.
+- Iteration 109: refreshed progress metadata with the current 85-test review result and real-Oxygen acceptance next steps.
+- Iteration 110: converted real-Oxygen acceptance requirements into explicit checklist items.
+- Iteration 111: documented the exact local review command and marked its verified checklist item.
+- Iteration 112: recorded external Oxygen/WebDAV/Pixette validation assumptions in `ASSUMPTIONS.md`.
+- Iteration 113: linked environment assumptions from README alongside the plan and technical review.
+- Iteration 114: added ingest coverage rejecting symlink object-root redirection.
+- Iteration 115: operation lock names now use the full archive-root SHA-256 digest.
+- Iteration 116: operation locks now open with no-follow, non-truncating, mode-0600 semantics.
+- Iteration 117: added regression coverage rejecting symlinked operation-lock paths.
+- Iteration 118: operation locks now enforce mode `0600` even when a lock file already exists.
+- Iteration 119: added regression coverage for tightening existing lock-file permissions.
+- Iteration 120: added RAID-0 backup-policy confirmation to the production acceptance checklist.
+- Iteration 121: added exact reviewed-manifest trial commands to `TECHNICAL_REVIEW.md`.
+- Iteration 122: corrected progress metadata to record the current 88-test review gate.
+- Iteration 123: added ingest coverage confirming temporary operation locks do not pollute archive roots.
+- Iteration 124: migration startup now reports resolved object-root paths.
+- Iteration 125: migration startup now reports both positional target and `--path` selection components.
+- Iteration 126: GC requires explicit `--root` when scanning custom object-root names to preserve lock coordination.
+- Iteration 127: documented the safe GC command form for custom object roots.
+- Iteration 128: added parser coverage requiring `--root` for custom GC object roots.
+- Iteration 129: added end-to-end coverage for GC inferring the archive root from `.objects`.
+- Iteration 130: simplified GC test hashing to use an explicit `hashlib` import.
+- Iteration 131: made GC missing-`--root` coverage assert the expected argparse exit status.
+- Iteration 132: added external-object-root GC lock-coordination acceptance coverage.
+- Iteration 133: documented GC `--root` as the archive root used for operation locking.
+- Iteration 134: clarified that GC infers the lock root only from `.objects` paths.
+- Iteration 135: removed the standalone unsafe copy target; `archive-reviewed` now copies before ledger update/install and README documents only that workflow.
+- Iteration 136: removed the obsolete standalone-copy reference from `AGENTS.md`.
+- Iteration 137: documented the deliberate copy-before-ledger ordering in `archive-reviewed`.
+- Iteration 138: clarified `AGENTS.md` to recommend the combined reviewed-copy workflow after review.
+- Iteration 139: added remote-ledger verification after the combined reviewed-copy workflow to the acceptance checklist.
+- Iteration 140: added dry-run ordering verification for `archive-reviewed` to the acceptance checklist.
+- Iteration 141: marked the low-level `copy-tree` CLI as partial and directed users to `archive-reviewed`.
+- Iteration 142: completed a clean local review and confirmed no stale standalone-copy references remain.
+- Iteration 143: created `IMPROVEMENTS.md` and added resolved migration startup-path coverage as the first completed item.
+- Iteration 144: completed GC custom-root output/argument coverage from the improvement backlog.
+- Iteration 145: completed the backlog’s Makefile ordering regression for `archive-reviewed`.
+- Iteration 146: replenished the backlog with three CLI-focused items and completed relative-manifest root coverage.
+- Iteration 147: completed verification CLI output/result coverage from the improvement backlog.
+- Iteration 148: replenished the backlog with three ingest/verification items and completed ingest outside-root rejection coverage.
+- Iteration 149: completed ingest CLI resolved-destination reporting coverage.
+- Iteration 150: replenished the backlog with three verification/ingest items and completed negative verify-limit validation coverage.
+- Iteration 151: replenished the backlog with selected-path coverage and completed verify missing-store stderr diagnostics.
+- Iteration 152: completed verify CLI relative-path propagation coverage.
+- Iteration 153: replenished the backlog with verbose/limit verifier items and completed the exact `shard/file` selected-path case.
+- Iteration 154: completed verifier CLI verbose-flag propagation coverage.
+- Iteration 155: completed verifier CLI positive-limit propagation coverage.
+- Iteration 156: replenished the backlog with three ingest/migration CLI items and completed custom ingest object-root propagation coverage.
+- Iteration 157: completed migration CLI ordered-exclusion propagation coverage.
+- Iteration 158: completed ingest CLI resolved-source reporting coverage.
+- Iteration 159: replenished the backlog with three parser-safety items and completed ingest required-root validation coverage.
+- Iteration 160: completed migration CLI negative-limit validation coverage.
+- Iteration 161: completed GC CLI missing-object-root validation coverage.
+- Iteration 162: replenished the backlog with three migration parser/error items and asserted apply/dry-run conflict status 2.
+- Iteration 163: asserted unsupported migration-job status 2 before engine invocation.
+- Iteration 164: strengthened migration niceness-error coverage to preserve the underlying denial message.
+- Iteration 165: replenished the backlog with three CLI failure-path items and added ingest failure-detail coverage.
+- Iteration 166: strengthened verify interrupt diagnostics coverage to assert the complete stderr message.
+- Iteration 167: strengthened GC corrupt-object coverage to assert the content-mismatch diagnostic.
+- Iteration 168: replenished the backlog with three interrupt-diagnostic items and completed migration interruption coverage.
+- Iteration 169: strengthened GC interruption coverage to assert the complete incomplete-report diagnostic.
+- Iteration 170: strengthened ingest interruption coverage to assert the complete incomplete-publication diagnostic.
+- Iteration 171: replenished the backlog with three CLI validation/error items and tightened malformed-manifest failure-prefix coverage.
+- Iteration 172: completed migration CLI missing-target validation coverage.
+- Iteration 173: reconciled and completed the verify missing-store backlog item using its existing full diagnostic coverage.
+- Iteration 174: replenished the backlog with three startup-reporting items and completed migration default-root output coverage.
+- Iteration 175: completed GC canonical object-root startup output coverage.
+- Iteration 176: completed ingest default-object-root startup output coverage.
+- Iteration 177: replenished the backlog with three result-output items and completed ingest digest reporting coverage.
+- Iteration 178: completed verify corrupt-object error-count and diagnostic coverage.
+- Iteration 179: completed GC candidate/retained count summary coverage.
+- Iteration 180: replenished the backlog with three CLI metric items and completed migration count/rate summary coverage.
+- Iteration 181: completed ingest elapsed-time summary coverage.
+- Iteration 182: completed verify elapsed-time summary coverage.
+- Iteration 183: replenished the backlog with three stream-routing items and formalized migration stdout/stderr separation.
+- Iteration 184: completed GC normal-output stream-routing coverage.
+- Iteration 185: completed verify normal-output stream-routing coverage.
+- Iteration 186: replenished the backlog with three failure-stream items and completed malformed-migration stderr-only coverage.
+- Iteration 187: completed GC corrupt-object stdout/stderr separation coverage.
+- Iteration 188: completed verify corrupt-object stdout/stderr separation coverage.
+- Iteration 189: replenished the backlog with three CLI edge-case items and reconciled migration engine-failure coverage.
+- Iteration 190: added verify CLI symlink-root safety coverage.
+- Iteration 191: added ingest CLI missing-source failure coverage.
+- Iteration 192: replenished the backlog with three CLI safety items and added existing-destination preservation coverage.
+- Iteration 193: added verify CLI malformed-object-path coverage.
+- Iteration 194: added migration CLI symlink-object-root safety coverage.
+- Iteration 195: replenished the backlog with three CLI storage-safety items and added ingest symlink-object-root rejection coverage.
+- Iteration 196: added verify CLI file-object-root safety coverage.
+- Iteration 197: added migration CLI corrupt-existing-object safety coverage.
+- Iteration 198: replenished the backlog with three CLI object-integrity items and added migration symlink-existing-object coverage.
+- Iteration 199: added ingest CLI same-digest destination idempotency coverage.
+- Iteration 200: added verify CLI selected-corrupt-object scoping coverage.
+- Iteration 201: replenished the backlog with three CLI concurrency/idempotency items and added ingest lock-rejection coverage.
+- Iteration 202: added migration CLI double-application manifest idempotency coverage.
+- Iteration 203: added migration CLI object-creation-race coverage for applied content.
+- Iteration 204: replenished the backlog with three CLI manifest-validation items and added changed-file rejection coverage.
+- Iteration 205: added migration CLI incomplete-manifest schema rejection coverage.
+- Iteration 206: added migration CLI unknown-manifest-schema rejection coverage.
+- Iteration 207: replenished the backlog with three manifest-context items and added CLI manifest-root mismatch coverage.
+- Iteration 208: added migration CLI missing-manifest failure coverage.
+- Iteration 209: reconciled malformed-JSON manifest coverage with its existing complete diagnostic test.
+- Iteration 210: added manifest outside-root path rejection coverage and replenished two related record/object-root items.
+- Iteration 211: added migration manifest symlink-object-root rejection coverage.
+- Iteration 212: verified and documented that mtime-only manifest drift with identical content remains safely applicable.
+- Iteration 213: replenished the backlog with three manifest-integrity items and proved changed-digest rejection creates no object store.
+- Iteration 214: added same-content inode-replacement manifest coverage.
+- Iteration 215: added migration CLI external-object-root manifest coverage.
+- Iteration 216: replenished the backlog with three manifest object-root edge cases and added regular-file object-root rejection coverage.
+- Iteration 217: added migration CLI regular-file manifest-root rejection coverage.
+- Iteration 218: added migration CLI explicit object-root override coverage for manifest apply.
+- Iteration 219: replenished the backlog with three manifest-record edge cases and added missing-record-file rejection coverage.
+- Iteration 220: added migration CLI manifest-record symlink rejection coverage.
+- Iteration 221: added migration CLI manifest filesystem-mismatch rejection coverage.
+- Iteration 222: added directory fsync after atomic manifest replacement and queued durability documentation/failure coverage.
+- Iteration 223: added manifest directory-fsync failure coverage and temporary-file cleanup verification.
+- Iteration 224: documented manifest file and parent-directory fsync semantics in the technical review.
+- Iteration 225: replenished atomic-manifest durability backlog and added replace-failure temp cleanup coverage.
+- Iteration 226: added manifest temporary-file mode `0600` coverage.
+- Iteration 227: added missing-manifest-parent failure and no-directory-creation coverage.
+- Iteration 228: replenished atomic-replacement backlog and proved failed replacement preserves the existing manifest.
+- Iteration 229: added manifest fsync/replace ordering coverage.
+- Iteration 230: documented failed manifest replacement preservation in the technical review.
+- Iteration 231: completed a clean local gate after closing the durability backlog.
+- Iteration 232: added pre-publish source digest revalidation and queued race coverage/documentation.
+- Iteration 233: added migration publish-race coverage proving changed source bytes are not replaced.
+- Iteration 234: documented migration pre-publish source revalidation in the technical review.
+- Iteration 235: documented the portable-stdlib limitation of final publish replacement and queued TOCTOU stress/documentation follow-ups.
+- Iteration 236: expanded publish-race coverage to three independent source mutations.
+- Iteration 237: documented the portable publish TOCTOU limitation and mitigation in the technical review.
+- Iteration 238: replenished the backlog with three CLI path-safety items and added escaping migration-path rejection coverage.
+- Iteration 239: added verify CLI escaping-path rejection coverage.
+- Iteration 240: added ingest CLI relative destination-traversal rejection coverage.
+- Iteration 241: replenished the backlog with three symlinked-path safety items and added migration symlinked-target rejection coverage.
+- Iteration 242: added ingest CLI symlinked-destination-parent rejection coverage.
+- Iteration 243: added verify CLI symlinked-selection rejection coverage.
+- Iteration 244: excluded symlinked files from remote tar manifests and queued stage/documentation coverage.
+- Iteration 245: added remote tar-manifest coverage proving symlinked stage files are excluded.
+- Iteration 246: documented remote review-stage non-symlink eligibility in the technical review.
+- Iteration 247: excluded symlinked year directories from remote chmod traversal and queued coverage/documentation.
+- Iteration 248: added remote tar/chmod coverage for symlinked year-directory exclusion.
+- Iteration 249: documented remote symlink-year exclusion in the technical review.
+- Iteration 250: switched remote tar manifests to NUL-delimited filenames and updated manifest parsing coverage.
+- Iteration 251: added newline-filename regression coverage for remote tar manifests.
+- Iteration 252: documented NUL-delimited remote tar-manifest safety in the technical review.
+- Iteration 253: switched direct remote tar copies to NUL-delimited manifests and queued coverage/documentation.
+- Iteration 254: added direct remote-copy newline-filename regression coverage.
+- Iteration 255: documented NUL-delimited manifests for both remote tar-copy paths.
+- Iteration 256: rejected symlink source paths in direct remote tar copies and queued coverage/documentation.
+- Iteration 257: added direct remote-copy symlink rejection coverage.
+- Iteration 258: documented direct remote-copy symlink rejection in the technical review.
+- Iteration 259: excluded symlink sources from review staging and queued coverage/documentation.
+- Iteration 260: added review-staging symlink-source rejection coverage.
+- Iteration 261: documented review-staging non-symlink source requirements.
+- Iteration 262: rejected review-stage sources resolving outside `source_root` and queued coverage/documentation.
+- Iteration 263: added review-staging symlinked-parent containment coverage.
+- Iteration 264: documented resolved-source containment for review staging.
+- Iteration 265: rejected symlinked review-stage and year destinations before hardlinking; queued coverage/documentation.
+- Iteration 266: added review-staging symlink-destination rejection coverage.
+- Iteration 267: documented review-staging symlink-destination rejection.
+- Iteration 268: enforced relative, resolved-under-root source paths for direct remote copies; queued coverage/documentation.
+- Iteration 269: added direct remote-copy symlinked-parent containment coverage.
+- Iteration 270: documented direct-copy resolved-source containment.
+- Iteration 271: added absolute-path rejection coverage for direct remote copies.
+- Iteration 272: documented relative-only direct-copy tar manifests.
+- Iteration 273: added `copy-missing` rejection coverage for outside source-record paths.
+- Iteration 274: documented `copy-missing` source-record containment in the technical review.
+- Iteration 275: centralized direct-copy source validation and applied it before `copy-missing --dry-run` output.
+- Iteration 276: added `copy-missing --dry-run` symlinked-parent rejection coverage.
+- Iteration 277: documented validation-before-output behavior for `copy-missing --dry-run`.
+- Iteration 278: added direct coverage for shared relative source-path validation.
+- Iteration 279: extended shared source-path validation coverage to symlinked-parent traversal.
+- Iteration 280: documented the shared direct-copy validation contract.
+- Iteration 281: shell-quoted the remote audit root and added injection regression coverage.
+- Iteration 282: made remote audit stat output NUL-delimited and added newline-filename coverage.
+- Iteration 283: documented NUL-safe remote audit filename handling.
+- Iteration 284: asserted remote audit commands request NUL-terminated `stat` records.
+- Iteration 285: documented combined shell-quoting and NUL-safe remote audit handling.
+- Iteration 286: replaced remote audit `xargs` with empty-safe `find -exec` and added empty-tree coverage.
+- Iteration 287: documented empty-safe remote audit traversal.
+- Iteration 288: asserted remote audit uses `find -exec` without `xargs`.
+- Iteration 289: made empty review stages skip remote tar invocation and added coverage.
+- Iteration 290: documented empty review-stage no-op behavior.
+- Iteration 291: moved empty-stage detection before remote mkdir, making empty `copy_stage` a full no-op.
+- Iteration 292: documented full empty-stage no-op behavior and subprocess guarantees.
+- Iteration 293: reviewed and documented empty-input short-circuit behavior across transfer commands.
+- Iteration 294: added symlink-only review-stage no-op coverage.
+- Iteration 295: closed symlink-only stage coverage and confirmed regular-file filtering remains the boundary.
+- Iteration 296: documented symlink-only stage no-op and regular-file transfer behavior.
+- Iteration 297: extended empty-stage no-op coverage to empty year directories.
+- Iteration 298: documented empty-year review-stage no-op behavior.
+- Iteration 299: completed review-stage filtering review for non-regular entries.
+- Iteration 300: excluded in-root `.objects` from remote audit scanning and added command coverage.
+- Iteration 301: documented remote audit exclusion parity for metadata, objects, and ledgers.
+- Iteration 302: strengthened remote audit scanner exclusion-command coverage.
+- Iteration 303: completed remote scanner exclusion review and documented parity.
+- Iteration 304: recorded local verification of remote scanner command properties.
+- Iteration 305: added `remote_find` exclusion-parity command coverage.
+- Iteration 306: documented command-level exclusion coverage for both remote scanners.
+- Iteration 307: added empty-output coverage for `remote_find`.
+- Iteration 308: skipped remote hashing when ledger discovery finds no new paths and added coverage.
+- Iteration 309: documented empty remote discovery and no-new-path ledger behavior.
+- Iteration 310: corrected technical-review wording for no-new-path ledger output behavior.
+- Iteration 311: covered no-new-path ledger updates with alternate output files.
+- Iteration 312: documented no-new-path ledger output semantics.
+- Iteration 313: centralized shared remote scanner exclusions for discovery and audit.
+- Iteration 314: added direct parity coverage for the centralized scanner exclusions.
+- Iteration 315: documented centralized remote scanner exclusions.
+- Iteration 316: completed scanner-drift review using the shared exclusion constant.
+- Iteration 317: added `remote_find` newline-filename parsing coverage.
+- Iteration 318: documented the UTF-8 assumption for remote scanner output.
+- Iteration 319: documented NUL-safe parsing for both remote discovery scanners.
+- Iteration 320: verified `make -n archive-reviewed` orders copy before ledger update/install.
+- Iteration 321: verified and documented canonical `/var/services/photo` path consistency.
+- Iteration 322: documented remote UTF-8 filename assumptions in the README.
+- Iteration 323: added `remote_find` shell-quoting regression coverage.
+- Iteration 324: completed remote discovery and ledger-update root-quoting review.
+- Iteration 325: documented centralized remote discovery root quoting.
+- Iteration 326: added NUL-delimited `remote_sha256` transport coverage.
+- Iteration 327: added empty-input `remote_sha256` no-subprocess coverage.
+- Iteration 328: documented NUL-safe remote hashing and empty-input behavior.
+- Iteration 329: documented remote hash-output UTF-8 assumptions.
+- Iteration 330: clarified non-UTF-8 remote filename acceptance remains pending Oxygen testing.
+- Iteration 331: made remote hash output NUL-delimited and normalized it for ledger compatibility.
+- Iteration 332: closed remote hash NUL-output and ledger-compatibility coverage.
+- Iteration 333: documented Synology `sha256sum --zero` compatibility acceptance.
+- Iteration 334: verified local GNU `sha256sum --zero` compatibility.
+- Iteration 335: verified local NUL hash output with a newline-containing filename.
+- Iteration 336: documented the remote `sha256sum --zero` compatibility assumption.
+- Iteration 337: extended remote hash normalization coverage to multiple NUL records.
+- Iteration 338: documented multi-record remote hash normalization.
+- Iteration 339: reviewed and documented the complete remote hash transport pipeline.
+- Iteration 340: reverified the full local technical gate after remote transport hardening.
+- Iteration 341: recorded local-versus-production technical review status.
+- Iteration 342: documented remote ledger NUL transport and UTF-8 assumptions in the README.
+- Iteration 343: documented the remote `sha256sum --zero` requirement in the README.
+- Iteration 344: rejected newline-containing remote hash paths to protect the line-based ledger.
+- Iteration 348: converted `copy-missing` validation failures into exit-1 diagnostics and added CLI coverage.
+- Iteration 349: added concise CLI diagnostics for filesystem `OSError`s and coverage.
+- Iteration 350: documented laptop CLI exit-1 diagnostics for validation and filesystem failures.
+- Iteration 351: added the laptop CLI error contract to the README.
+- Iteration 345: closed documentation coverage for line-based ledger newline rejection.
+- Iteration 346: documented tar-versus-ledger filename capability differences.
+- Iteration 347: added ledger-preservation coverage for rejected newline hash paths.
+- Iteration 352: reverified the full local technical gate after remote transport hardening.
+- Iteration 353: added strict remote SHA-256 output validation and queued regression/documentation coverage.
+- Iteration 354: added malformed remote hash-output regression coverage.
+- Iteration 356: validated `remote_find` results remain beneath the requested root and added coverage.
+- Iteration 357: documented remote discovery result containment.
+- Iteration 358: validated audit scanner results remain beneath the requested root.
+- Iteration 359: documented containment parity for both remote scanners.
+- Iteration 360: rejected malformed remote audit stat sizes and added coverage.
+- Iteration 361: documented strict remote audit stat parsing.
+- Iteration 362: rejected malformed remote audit stat records and added coverage.
+- Iteration 363: documented strict remote audit stat-record requirements.
+- Iteration 364: added remote discovery root-prefix collision coverage.
+- Iteration 365: added audit root-prefix collision coverage.
+- Iteration 366: documented normalized trailing-slash root containment semantics.
+- Iteration 367: normalized remote scanner paths before containment checks and added `..` traversal coverage.
+- Iteration 368: documented normalized POSIX remote-result containment.
+- Iteration 369: added direct `remote_path_beneath` normalization and traversal coverage.
+- Iteration 370: documented shared scanner containment-helper coverage.
+- Iteration 371: canonicalized accepted remote scanner paths and added in-root traversal coverage.
+- Iteration 372: added remote scanner `./` path canonicalization coverage.
+- Iteration 373: documented dot-segment canonicalization and ledger deduplication effects.
+- Iteration 374: added filesystem-root containment-helper coverage.
+- Iteration 375: documented root normalization and filesystem-root containment behavior.
+- Iteration 376: added empty/relative-root containment-helper coverage.
+- Iteration 377: documented relative-root semantics and reviewed scanner root assumptions.
+- Iteration 378: rejected empty roots in both remote scanners and added coverage.
+- Iteration 379: documented empty-root scanner rejection before shell execution.
+- Iteration 380: added repeated-slash root containment coverage.
+- Iteration 381: documented repeated-slash root normalization and review completion.
+- Iteration 382: deduplicated canonical `remote_find` paths before hashing and added coverage.
+- Iteration 383: documented canonical discovery deduplication.
+- Iteration 384: deduplicated canonical audit scanner paths and added coverage.
+- Iteration 385: documented canonical deduplication parity across scanners.
+- Iteration 386: rejected conflicting sizes for duplicate canonical audit paths and added coverage.
+- Iteration 387: documented conflicting-size audit deduplication safety.
+- Iteration 388: fixed current-directory root containment and added coverage.
+- Iteration 389: documented current-directory root semantics.
+- Iteration 390: added current-directory canonicalization coverage for both scanners.
+- Iteration 391: documented current-directory scanner canonicalization.
+- Iteration 392: rejected whitespace-only remote scanner roots and added coverage.
+- Iteration 393: documented empty and whitespace-only scanner root validation.
+- Iteration 394: rejected NUL-containing scanner roots and added coverage.
+- Iteration 395: documented NUL-root scanner validation.
+- Iteration 396: hardened `remote_path_beneath` against NUL values and added coverage.
+- Iteration 397: documented helper-level NUL containment protection.
+- Iteration 398: aligned direct containment-helper whitespace-root validation and added coverage.
+- Iteration 399: documented containment-helper and scanner root-validation parity.
+- Iteration 400: documented strict-descendant containment semantics and added coverage.
+- Iteration 401: recorded strict containment semantics in the technical review.
+- Iteration 402: canonicalized repeated leading slashes in containment checks and added coverage.
+- Iteration 403: documented leading-slash containment canonicalization.
+- Iteration 404: covered repeated leading slashes in candidate containment paths.
+- Iteration 405: documented two-sided containment operand canonicalization.
+- Iteration 406: covered relative-root dot-dot sibling traversal rejection.
+- Iteration 407: documented relative dot-segment containment safety.
+- Iteration 408: covered trailing-slash sibling-prefix containment protection.
+- Iteration 409: documented trailing-slash sibling-prefix protection.
+- Iteration 410: covered `./` candidate paths for current-directory containment.
+- Iteration 411: documented scanner-emitted `./` path handling.
+- Iteration 412: covered equivalent `.` and `./` scanner roots.
+- Iteration 413: documented equivalent current-directory root spellings.
+- Iteration 414: covered normalized `/.` relative roots in containment checks.
+- Iteration 415: documented `/.` root normalization.
+- Iteration 416: recorded clean local review status and pending Oxygen acceptance.
+- Iteration 417: classified malformed UTF-8 discovery output and added coverage.
+- Iteration 418: documented malformed discovery UTF-8 rejection.
+- Iteration 419: classified malformed shared SSH UTF-8 output and added coverage.
+- Iteration 420: verified audit propagation of shared SSH UTF-8 errors.
+- Iteration 421: documented shared UTF-8 rejection ordering for discovery and audit.
+- Iteration 422: documented audit transport rejection ordering and test coverage.
+- Iteration 423: verified malformed audit transport fails before containment parsing.
+- Iteration 424: documented distinct stable malformed discovery and SSH diagnostics.
+- Iteration 425: verified discovery and SSH diagnostic assertions identify transport sources.
+- Iteration 426: documented decode-versus-containment error boundaries.
+- Iteration 427: verified containment diagnostic assertions and queued CLI coverage.
+- Iteration 428: added CLI validation-failure exit and stderr coverage.
+- Iteration 429: documented malformed remote-output handling in the README.
+- Iteration 430: added README corrective actions for decode and containment diagnostics.
+- Iteration 431: verified shared-output diagnostic assertions for discovery and SSH decoding.
+- Iteration 432: documented focused malformed-output test commands in the README.
+- Iteration 433: clarified focused transport tests are mocked local coverage, not Oxygen acceptance.
+- Iteration 434: verified README mock-versus-live acceptance guidance.
+- Iteration 435: added focused transport-test reproduction guidance to the technical review.
+- Iteration 436: linked README transport diagnostics to technical review status.
+- Iteration 437: linked README acceptance guidance to assumptions and prerequisites.
+- Iteration 438: verified README acceptance-status links for review and assumptions.
+- Iteration 439: added documentation status-file existence coverage.
+- Iteration 440: recorded documentation integrity checks in the technical review.
+- Iteration 441: documented CLI documentation-link verification in the README.
+- Iteration 442: named the stable documentation status-file test in the README.
+- Iteration 443: synchronized the named documentation test across README and technical review.
+- Iteration 444: added README test-name consistency coverage.
+- Iteration 445: added README/technical-review test-name parity coverage.
+- Iteration 446: documented automated documentation-name parity checks in the README.
+- Iteration 447: documented documentation-parity failure behavior in the technical review.
+- Iteration 448: added README remediation guidance for documentation-parity failures.
+- Iteration 449: documented the paired files required for parity remediation.
+- Iteration 450: linked the README parity guidance to `tests/test_cli.py`.
+- Iteration 451: linked technical-review parity guidance to the CLI test source.
+- Iteration 452: added a concise CLI validation-failure example to the README.
+- Iteration 453: added CLI example parity coverage for the documented diagnostic.
+- Iteration 454: recorded the stable CLI diagnostic in the technical review.
+- Iteration 455: added README guidance to correct transport failures before retrying.
+- Iteration 456: mirrored no-unchanged-retry guidance in the technical review.
+- Iteration 457: added README/technical-review retry-guidance parity coverage.
+- Iteration 458: clarified README corrected-transport rerun guidance.
+- Iteration 459: mirrored corrected-transport rerun guidance in the technical review.
+- Iteration 460: added corrected-transport wording parity coverage.
+- Iteration 461: added shared `before rerunning` guidance coverage.
+- Iteration 462: documented shared retry-action wording in the technical review.
+- Iteration 463: clarified README parity for the `before rerunning` action boundary.
+- Iteration 464: added shared retry-boundary parity coverage across README and review.
+- Iteration 465: documented retry-boundary parity test scope in the technical review.
+- Iteration 466: linked README retry guidance to focused parity assertions.
+- Iteration 467: linked technical review retry guidance back to README.
+- Iteration 468: added reciprocal README/technical-review link coverage.
+- Iteration 469: documented reciprocal-navigation remediation behavior.
+- Iteration 470: added README repair guidance for reciprocal documentation links.
+- Iteration 471: added reciprocal-link repair wording coverage.
+- Iteration 472: added technical-review paired-file repair parity coverage in `tests/test_cli.py`.
+- Iteration 473: recorded reciprocal repair parity coverage in progress history.
+- Iteration 474: linked technical review to the iteration’s focused parity test.
+- Iteration 475: added progress-history parity coverage for iteration 473.
+- Iteration 476: added technical-review parity coverage for the progress reference.
+- Iteration 477: linked README readers to progress-history parity evidence.
+- Iteration 478: linked technical-review status to progress history.
+- Iteration 479: added reciprocal progress-link parity coverage.
+- Iteration 480: added README repair guidance for stale progress links.
+- Iteration 481: mirrored stale-progress repair guidance in the technical review.
+- Iteration 482: added stale-progress repair phrase parity coverage.
+- Iteration 483: recorded stale-progress remediation coverage in `tests/test_cli.py`.
+- Iteration 484: recorded progress-link parity coverage in the technical review.
+- Iteration 485: extended documentation-link existence coverage to `PROGRESS.md`.
+- Iteration 486: recorded progress/review reference parity in `tests/test_cli.py`.
+- Iteration 487: clarified README progress-history evidence wording.
+- Iteration 488: verified README iteration-history parity evidence navigation.
+- Iteration 489: recorded reciprocal-link coverage in `tests/test_cli.py`.
+- Iteration 490: recorded reciprocal README/technical-review navigation coverage.
+- Iteration 491: named the focused retry-boundary parity test in README guidance.
+- Iteration 492: recorded retry-phrase parity coverage in `tests/test_cli.py`.
+- Iteration 493: recorded corrected-transport rerun guidance in README and technical review.
+- Iteration 494: recorded retry-guidance parity coverage in `tests/test_cli.py`.
+- Iteration 495: clarified README corrective-wording synchronization guidance.
+- Iteration 496: documented CLI examples as mocked local validation in the technical review.
+- Iteration 497: strengthened README status-link assertions for review and assumptions.
+- Iteration 498: added parity-test source link-integrity coverage.
+- Iteration 499: added README stale-history remediation wording coverage.
+- Iteration 500: recorded documentation parity coverage in `tests/test_cli.py`.
+- Iteration 501: verified technical-review coverage for the documented status test.
+- Iteration 502: recorded three focused documentation assertions in `tests/test_cli.py`.
+- Iteration 503: clarified README assumptions and local-test evidence limits.
+- Iteration 504: recorded focused transport-test scope for `tests/test_remote.py`, `tests/test_audit.py`, and `tests/test_cli.py`.
+- Iteration 505: recorded malformed-output checks as local-only pending Oxygen acceptance.
+- Iteration 506: guarded the production-approval warning with documentation tests.
+- Iteration 507: added the production-approval limitation to README operator guidance.
+- Iteration 508: linked the production-approval warning to its CLI documentation guard.
+- Iteration 509: added README production-warning parity coverage.
+- Iteration 510: recorded README/review production-warning parity in `tests/test_cli.py`.
+- Iteration 511: documented production-warning parity across README and technical review.
+- Iteration 512: verified README production-warning assertion in the documentation guard.
+- Iteration 513: recorded production-warning phrase parity coverage in `tests/test_cli.py`.
+- Iteration 514: documented production-warning test scope in the technical review.
+- Iteration 515: covered direct UnicodeDecodeError normalization in CLI handling.
+- Iteration 516: documented CLI UnicodeDecodeError exit handling in the technical review.
+- Iteration 517: recorded direct decode-error CLI regression coverage.
+- Iteration 518: asserted direct decode-error CLI stderr prefix and message.
+- Iteration 519: documented direct decode-error CLI stderr coverage in the technical review.
+- Iteration 520: recorded exact direct-decode stderr regression coverage in `tests/test_cli.py`.
+- Iteration 521: covered direct OSError normalization in CLI handling.
+- Iteration 522: documented direct OSError exit handling in the technical review.
+- Iteration 523: recorded direct OSError CLI regression coverage in `tests/test_cli.py`.
+- Iteration 524: added direct OSError README wording parity coverage.
+- Iteration 525: documented validation and filesystem exit behavior in README examples.
+- Iteration 526: recorded direct OSError README parity coverage in `tests/test_cli.py`.
+- Iteration 527: added filesystem-exit README wording parity coverage.
+- Iteration 528: recorded filesystem-exit wording parity in `tests/test_cli.py`.
+- Iteration 529: documented filesystem-exit wording parity in the technical review.
+- Iteration 530: traced the direct OSError guard to `test_main_reports_os_error`.
+- Iteration 531: recorded direct OSError guard parity in `tests/test_cli.py`.
+- Iteration 532: linked README filesystem guidance to `test_main_reports_os_error`.
+- Iteration 533: added README OSError test-name parity coverage.
+- Iteration 534: recorded OSError test-name parity for README and `tests/test_cli.py`.
+- Iteration 535: documented OSError test-name parity across README, review, and CLI tests.
+- Iteration 536: asserted errno preservation in direct OSError CLI diagnostics.
+- Iteration 537: documented errno-preserving OSError diagnostics in the technical review.
+- Iteration 538: recorded errno-preservation coverage for `test_main_reports_os_error`.
+- Iteration 539: asserted technical-review preservation of `[Errno 13]` details.
+- Iteration 540: recorded errno-detail documentation parity in `tests/test_cli.py`.
+- Iteration 541: documented preserved filesystem errno details in README guidance.
+- Iteration 542: added README errno-detail parity coverage.
+- Iteration 543: recorded README errno-detail parity in `tests/test_cli.py`.
+- Iteration 544: documented README errno-detail guard in the technical review.
+- Iteration 545: asserted all three CLI exception classes are documented.
+- Iteration 546: recorded `ValueError`/`UnicodeDecodeError`/`OSError` parity coverage in `tests/test_cli.py`.
+- Iteration 547: documented the CLI exception boundary in README guidance.
+- Iteration 548: added README/review exception-boundary parity coverage.
+- Iteration 549: recorded exception-boundary parity coverage in `tests/test_cli.py`.
+- Iteration 550: documented exception-boundary test scope in the technical review.
+- Iteration 551: added README exception-class wording parity coverage.
+- Iteration 552: recorded README exception-class parity in `tests/test_cli.py`.
+- Iteration 553: documented README exception-class parity in the technical review.
+- Iteration 554: verified exact `ValueError` CLI stderr coverage.
+- Iteration 555: documented exact `ValueError` CLI stderr coverage in the technical review.
+- Iteration 556: recorded exact `ValueError` stderr coverage for `test_main_reports_validation_failure`.
+- Iteration 557: asserted the complete stable errno CLI line for `test_main_reports_os_error`.
+- Iteration 558: documented the complete stable errno CLI line in the technical review.
+- Iteration 559: recorded complete errno stderr coverage for `test_main_reports_os_error`.
+- Iteration 560: added cross-document `[Errno 13]` parity coverage.
+- Iteration 561: recorded cross-document errno-line parity in `tests/test_cli.py`.
+- Iteration 562: documented complete errno-line parity scope in the technical review.
+- Iteration 563: asserted codec, position, and reason details for decode-error CLI stderr.
+- Iteration 564: documented exact decode-error stderr details in the technical review.
+- Iteration 565: recorded exact decode-error stderr coverage for `test_main_reports_decode_failure`.
+- Iteration 566: added README/review decode-detail parity coverage.
+- Iteration 567: recorded decode-detail parity coverage in `tests/test_cli.py`.
+- Iteration 568: documented decode-detail parity scope in the technical review.
+- Iteration 569: made documentation parity reads explicitly UTF-8 in `tests/test_cli.py`.
+- Iteration 570: documented locale-independent UTF-8 documentation reads in the technical review.
+- Iteration 571: recorded locale-independent documentation coverage for `tests/test_cli.py`.
+- Iteration 572: added a regression guard keeping live Oxygen acceptance checklist items pending.
+- Iteration 573: documented the live-acceptance checklist guard in the technical review.
+- Iteration 574: recorded `test_review_keeps_live_acceptance_pending` as the production-safety guard.
+- Iteration 575: expanded acceptance guards to migration, metadata, ledger, and backup checklist items.
+- Iteration 576: documented full live-acceptance checklist coverage in the technical review.
+- Iteration 577: recorded migration, metadata, ledger, and backup acceptance guards.
+- Iteration 578: guarded the nine-item unchecked production-acceptance checklist count.
+- Iteration 579: documented the nine-item acceptance-count guard in the technical review.
+- Iteration 580: recorded the nine-item production-acceptance guard.
+- Iteration 581: explicitly guarded external `.objects` placement and GC lock coordination.
+- Iteration 582: documented external `.objects` and explicit-`--root` GC acceptance coverage.
+- Iteration 583: recorded external `.objects` placement and GC lock-coordination acceptance coverage.
+- Iteration 584: explicitly guarded object and visible-hardlink count acceptance coverage.
+- Iteration 585: documented complete per-entry acceptance checklist coverage in the technical review.
+- Iteration 586: recorded per-entry migration, indexing, WebDAV, metadata, ledger, and backup guards.
+- Iteration 587: guarded separation of checked local gates from nine pending production checks.
+- Iteration 588: documented local-versus-production status separation in the technical review.
+- Iteration 589: recorded `test_review_separates_local_and_production_status` coverage.
+- Iteration 590: added README wording that local review is not production approval, with parity coverage.
+- Iteration 591: guarded the production-approval warning against README/review drift.
+- Iteration 592: recorded README/review production-approval warning parity coverage.
+- Iteration 593: asserted exact pending Oxygen/Synology environment-limit wording in README and review.
+- Iteration 594: documented the exact pending Oxygen/Synology environment-limit wording in the technical review.
+- Iteration 595: recorded the README/review environment-limit warning parity guard.
+- Iteration 596: guarded two completed local gates alongside nine pending production checks.
+- Iteration 597: documented the two-versus-nine review status counts.
+- Iteration 598: recorded exactly two checked local gates and nine pending production checks.
+- Iteration 599: inspected the completed backlog and confirmed no open improvement items.
+- Iteration 600: added direct inode-exhaustion preflight coverage for `_check_resources`.
+- Iteration 601: documented inode-exhaustion preflight behavior in the technical review.
+- Iteration 602: recorded `test_check_resources_rejects_inode_exhaustion` coverage.
+- Iteration 603: added direct zero-free-byte preflight coverage for `_check_resources`.
+- Iteration 604: documented byte and inode resource-preflight branches in the technical review.
+- Iteration 605: recorded zero-free-byte and inode-exhaustion preflight coverage.
+- Iteration 606: made hardlink preflight cleanup exception-safe and covered second-probe failure.
+- Iteration 607: stabilized malformed UTF-8 handling for remote hash output.
+- Iteration 608: documented the remote hash decode boundary in the technical review.
+- Iteration 609: recorded `test_remote_sha256_rejects_malformed_utf8` coverage.
+- Iteration 610: asserted exact distinct diagnostics for malformed remote hash records and UTF-8.
+- Iteration 611: stabilized missing-TSV short-row diagnostics with direct coverage.
+- Iteration 612: documented missing-TSV row validation in the technical review.
+- Iteration 613: validated missing-TSV adjusted flags strictly as `0` or `1`.
+- Iteration 614: documented strict adjusted-flag validation in the technical review.
+- Iteration 615: stabilized outside-root `relative_paths` errors with exact coverage.
+- Iteration 616: documented relative-path containment validation in the technical review.
+- Iteration 617: added same-size remote audit-path deduplication coverage.
+- Iteration 618: documented same-size remote audit-path deduplication in the technical review.
+- Iteration 619: recorded `test_remote_files_deduplicates_same_size_paths` coverage.
+- Iteration 620: made the core walker skip symlink files with regression coverage.
+- Iteration 621: documented core walker symlink safety in the technical review.
+- Iteration 622: enforced Photos DB asset containment beneath `originals` with regression coverage.
+- Iteration 623: documented Photos asset containment in the technical review.
+- Iteration 624: rejected empty Photos asset path components with parameterized coverage.
+- Iteration 625: documented Photos path-component validation in the technical review.
+- Iteration 626: rejected non-finite Apple timestamps with parameterized coverage.
+- Iteration 627: documented Apple timestamp validation in the technical review.
+- Iteration 628: encoded Photos SQLite read-only URIs for special-character paths.
+- Iteration 629: documented SQLite URI encoding in the technical review.
+- Iteration 630: stabilized non-numeric Apple timestamp errors with exact coverage.
+- Iteration 631: documented numeric Apple timestamp validation in the technical review.
+- Iteration 632: made direct core hashing reject symlink inputs with exact coverage.
+- Iteration 633: documented direct core hash symlink safety in the technical review.
+- Iteration 634: restricted direct core hashing to regular files with regression coverage.
+- Iteration 635: documented regular-file hash safety in the technical review.
+- Iteration 636: made the core walker reject symlink roots with exact coverage.
+- Iteration 637: documented core walker root symlink safety in the technical review.
+- Iteration 638: made core walker reject missing and non-directory roots with coverage.
+- Iteration 639: documented core walker root validation in the technical review.
+- Iteration 640: added coverage preventing traversal through symlink directories.
+- Iteration 641: documented directory-link traversal safety in the technical review.
+- Iteration 642: verified audit newline filenames remain supported and retained the existing boundary.
+- Iteration 643: documented audit newline filename preservation and the NUL transport boundary.
+- Iteration 644: recorded `test_remote_files_preserves_newline_filenames` coverage.
+- Iteration 645: documented the audit newline-path boundary test in the technical review.
+- Iteration 646: guarded empty duplicate-report parsing with a regression test.
+- Iteration 647: documented empty duplicate-report safety in the technical review.
+- Iteration 648: recorded `test_parse_duplicate_group_file_ignores_empty_report` coverage.
+- Iteration 649: added zero-byte audit estimate coverage.
+- Iteration 650: documented zero-work audit reporting in the technical review.
+- Iteration 651: recorded `test_time_range_zero_bytes` coverage.
+- Iteration 652: rejected negative audit byte totals with shared helper coverage.
+- Iteration 653: documented nonnegative audit-size invariants in the technical review.
+- Iteration 654: guarded empty duplicate-group serialization with regression coverage.
+- Iteration 655: documented empty duplicate-group serialization in the technical review.
+- Iteration 656: recorded `test_write_duplicate_groups_empty_input` coverage.
+- Iteration 657: added zero-byte human-size formatting coverage.
+- Iteration 658: documented zero-byte size and duration formatting in the technical review.
+- Iteration 659: recorded `test_human_bytes_zero` coverage.
+- Iteration 660: added exact TiB unit-boundary formatting coverage.
+- Iteration 661: documented audit TiB unit-boundary formatting in the technical review.
+- Iteration 662: recorded `test_human_bytes_tib_boundary` coverage.
+- Iteration 663: stabilized out-of-range Apple timestamp errors with exact coverage.
+- Iteration 664: documented Apple timestamp range validation in the technical review.
+- Iteration 665: added PiB audit-size formatting with boundary coverage.
+- Iteration 666: documented PiB audit-size formatting in the technical review.
+- Iteration 667: added exact pre-KiB audit byte-boundary coverage.
+- Iteration 668: documented pre-KiB audit byte-boundary formatting in the technical review.
+- Iteration 669: recorded `test_human_bytes_before_kib_boundary` coverage.
+- Iteration 670: added exact KiB transition formatting coverage.
+- Iteration 671: documented exact KiB transition formatting in the technical review.
+- Iteration 672: recorded `test_human_bytes_kib_boundary` coverage.
+- Iteration 673: added exact MiB transition formatting coverage.
+- Iteration 674: documented exact MiB transition formatting in the technical review.
+- Iteration 675: recorded `test_human_bytes_mib_boundary` coverage.
+- Iteration 676: added exact GiB transition formatting coverage.
+- Iteration 677: documented exact GiB transition formatting in the technical review.
+- Iteration 678: recorded `test_human_bytes_gib_boundary` coverage.
+- Iteration 679: added representative 80-MiB audit duration coverage.
+- Iteration 680: documented representative 80-MiB audit duration coverage.
+- Iteration 681: recorded `test_time_range_representative_bytes` coverage.
+- Iteration 682: added large 1-GiB audit duration range coverage.
+- Iteration 683: documented large 1-GiB audit duration coverage in the technical review.
+- Iteration 684: recorded `test_time_range_large_bytes` coverage.
+- Iteration 685: added duplicate-report serialization round-trip coverage.
+- Iteration 686: documented duplicate-report serialization round-trip coverage.
+- Iteration 687: recorded `test_write_duplicate_groups_round_trip` coverage.
+- Iteration 688: rejected newline-bearing duplicate paths before report serialization.
+- Iteration 689: documented duplicate-report path constraints in the technical review.
+- Iteration 690: rejected empty duplicate paths before report serialization.
+- Iteration 691: documented empty duplicate-path safety in the technical review.
+- Iteration 692: rejected whitespace-only duplicate paths with exact coverage.
+- Iteration 693: documented whitespace-only duplicate-path safety in the technical review.
+- Iteration 694: rejected empty duplicate groups before report serialization.
+- Iteration 695: documented empty duplicate-group safety in the technical review.
+- Iteration 696: rejected duplicate groups with fewer than two paths using parameterized coverage.
+- Iteration 697: documented duplicate-group cardinality in the technical review.
+- Iteration 698: recorded `test_write_duplicate_groups_rejects_short_group` coverage.
+- Iteration 699: verified duplicate-report round trips preserve spaces and tabs.
+- Iteration 700: added UTF-8 duplicate-report path round-trip coverage.
+- Iteration 701: documented UTF-8 duplicate-report path support in the technical review.
+- Iteration 702: recorded UTF-8 duplicate-report path round-trip coverage.
+- Iteration 703: guarded duplicate-report validation before output creation.
+- Iteration 704: documented pre-write duplicate-report validation in the technical review.
+- Iteration 705: recorded `test_write_duplicate_groups_validates_before_writing` coverage.
+- Iteration 706: rejected symlink duplicate-report outputs with target-preservation coverage.
+- Iteration 707: documented duplicate-report output-link safety in the technical review.
+- Iteration 708: rejected symlink duplicate-report parents with redirected-target coverage.
+- Iteration 709: documented duplicate-report parent-link safety in the technical review.
+- Iteration 710: rejected ancestor symlink duplicate-report parents with nested coverage.
+- Iteration 711: documented ancestor symlink duplicate-report parent safety.
+- Iteration 712: rejected directory duplicate-report destinations with exact coverage.
+- Iteration 713: documented duplicate-report destination validation in the technical review.
+- Iteration 714: validated duplicate-report parents before writing, including missing-parent coverage.
+- Iteration 715: documented duplicate-report parent validation in the technical review.
+- Iteration 716: enforced duplicate-group cardinality during report parsing with exact coverage.
+- Iteration 717: documented duplicate-report input cardinality in the technical review.
+- Iteration 718: recorded `test_parse_duplicate_group_file_rejects_singleton` coverage.
+- Iteration 719: validated parsed duplicate paths against empty and whitespace-only records.
+- Iteration 720: documented parsed duplicate-path validation in the technical review.
+- Iteration 721: added CR/LF duplicate-path rejection coverage.
+- Iteration 722: documented CR/LF duplicate-path rejection in the technical review.
+- Iteration 723: recorded parameterized CR/LF duplicate-path coverage.
+- Iteration 724: rejected NUL duplicate paths in parsed and serialized reports.
+- Iteration 725: documented NUL duplicate-path rejection in the technical review.
+- Iteration 726: rejected parsed carriage returns without universal-newline normalization.
+- Iteration 727: documented parsed CR rejection and raw-byte preservation.
+- Iteration 728: recorded `test_parse_duplicate_group_file_rejects_carriage_return` coverage.
+- Iteration 729: normalized malformed duplicate-report UTF-8 errors with exact coverage.
+- Iteration 731: recorded `test_parse_duplicate_group_file_rejects_invalid_utf8` coverage.
+- Iteration 732: rejected symlink duplicate-report inputs before parsing.
+- Iteration 733: documented duplicate-report input-link safety in the technical review.
+- Iteration 734: recorded `test_parse_duplicate_group_file_rejects_symlink` coverage.
+- Iteration 735: rejected duplicate-report inputs beneath symlinked parent directories.
+- Iteration 736: documented duplicate-report input parent-link safety in the technical review.
+- Iteration 737: recorded `test_parse_duplicate_group_file_rejects_symlink_parent` coverage.
+- Iteration 738: rejected missing duplicate-report inputs with exact coverage.
+- Iteration 739: documented missing duplicate-report input validation in the technical review.
+- Iteration 740: added directory duplicate-report input validation coverage.
+- Iteration 741: documented directory duplicate-report input validation in the technical review.
+- Iteration 742: recorded `test_parse_duplicate_group_file_rejects_directory_input` coverage.
+- Iteration 743: rejected repeated paths within duplicate groups with parser and serializer coverage.
+- Iteration 744: documented duplicate-group uniqueness validation in the technical review.
+- Iteration 745: rejected paths repeated across duplicate groups with parser and serializer coverage.
+- Iteration 746: documented report-wide duplicate-path validation in the technical review.
+- Iteration 747: recorded cross-group duplicate-path parser and serializer coverage.
+- Iteration 748: preserved leading and trailing duplicate-path spaces during report parsing.
+- Iteration 749: documented duplicate-group whitespace preservation in the technical review.
+- Iteration 750: switched duplicate-report parsing to literal LF separators with U+2028 coverage.
+- Iteration 751: documented literal-LF duplicate-report parsing in the technical review.
+- Iteration 752: extended separator round-trip coverage to U+2029.
+- Iteration 753: recorded U+2029 duplicate-path round-trip coverage.
+- Iteration 754: documented U+2029 duplicate-path round-trip coverage.
+- Iteration 755: covered all former `splitlines()` separators in duplicate-path round trips.
+- Iteration 756: documented broad separator round-trip coverage in the technical review.
+- Iteration 757: hashed files through O_NOFOLLOW descriptors with pre/post metadata checks.
+- Iteration 758: documented descriptor-based hash race protection in the technical review.
+- Iteration 759: tightened descriptor integrity checks for same-size mutations.
+- Iteration 760: added same-size metadata-change regression coverage.
+- Iteration 761: documented metadata-change detection in the technical review.
+- Iteration 762: verified pathname device/inode identity after descriptor hashing.
+- Iteration 763: documented post-hash pathname identity checks in the technical review.
+- Iteration 764: made core hashing fail closed when O_NOFOLLOW is unavailable.
+- Iteration 765: documented fail-closed O_NOFOLLOW hashing in the technical review.
+- Iteration 766: rejected symlinked hash-input parents with core coverage.
+- Iteration 767: documented hash-input parent-link safety in the technical review.
+- Iteration 768: recorded `test_sha256_file_rejects_symlink_parent` coverage.
+- Iteration 769: normalized core hash-input missing and non-directory-parent diagnostics.
+- Iteration 770: documented core hash-input path diagnostics in the technical review.
+- Iteration 771: rejected symlinked apply-manifest paths before migration processing.
+- Iteration 772: documented apply-manifest path-link safety in the technical review.
+- Iteration 773: added apply-manifest symlink-parent regression coverage.
+- Iteration 774: documented apply-manifest parent-link safety in the technical review.
+- Iteration 775: recorded direct and parent apply-manifest symlink coverage.
+- Iteration 776: documented apply-manifest missing-path diagnostics and no-write behavior.
+- Iteration 777: rejected symlink apply-manifest inputs before JSON parsing.
+- Iteration 778: documented apply-manifest input-link safety in the technical review.
+- Iteration 779: added apply-manifest symlink-parent input coverage.
+- Iteration 780: documented direct and parent apply-manifest input-link safety.
+- Iteration 781: recorded direct and parent apply-manifest input-link coverage.
+- Iteration 782: normalized malformed apply-manifest UTF-8 and JSON errors.
+- Iteration 783: documented apply-manifest decoding diagnostics in the technical review.
+- Iteration 784: rejected non-object apply-manifest JSON roots with schema coverage.
+- Iteration 785: documented non-object apply-manifest schema rejection in the technical review.
+- Iteration 786: validated apply-manifest root/object path field types.
+- Iteration 787: documented apply-manifest field type validation in the technical review.
+- Iteration 788: validated apply-manifest record field types with schema coverage.
+- Iteration 789: documented apply-manifest record field type validation in the technical review.
+- Iteration 790: validated apply-manifest digest format and nonnegative metadata.
+- Iteration 791: documented apply-manifest identity validation in the technical review.
+- Iteration 792: rejected duplicate paths in apply manifests with schema coverage.
+- Iteration 793: documented apply-manifest path uniqueness in the technical review.
+- Iteration 794: added negative apply-manifest metadata schema coverage.
+- Iteration 795: documented negative apply-manifest metadata validation in the technical review.
+- Iteration 796: rejected boolean apply-manifest metadata with strict integer coverage.
+- Iteration 797: documented strict apply-manifest integer validation in the technical review.
+- Iteration 798: required an actual integer apply-manifest version with schema coverage.
+- Iteration 799: documented strict apply-manifest version validation in the technical review.
+- Iteration 800: rejected empty apply-manifest object-root paths with schema coverage.
+- Iteration 801: documented nonempty apply-manifest path validation in the technical review.
+- Iteration 802: required absolute apply-manifest root/object paths with schema coverage.
+- Iteration 803: documented absolute apply-manifest path validation in the technical review.
+- Iteration 804: added relative apply-manifest root schema coverage.
+- Iteration 805: documented relative apply-manifest root rejection in the technical review.
+- Iteration 806: required nonempty relative apply-manifest record paths.
+- Iteration 807: documented relative apply-manifest record-path validation.
+- Iteration 808: rejected empty apply-manifest record paths with schema coverage.
+- Iteration 809: documented empty apply-manifest record-path rejection.
+- Iteration 810: rejected symlinked object-root parents with migration coverage.
+- Iteration 811: documented object-root parent-link safety in the technical review.
+- Iteration 812: protected standalone object verification from symlinked parents.
+- Iteration 813: documented standalone object verification parent-link safety.
+- Iteration 814: protected standalone GC discovery from symlinked object-root parents.
+- Iteration 815: documented standalone GC object-root parent-link safety.
+- Iteration 816: added `gc_summary` symlink-parent safety coverage.
+- Iteration 817: documented GC summary parent-link safety in the technical review.
+- Iteration 818: recorded `gc_summary` symlink-parent safety coverage.
+- Iteration 819: rejected symlink selected verification paths before verification.
+- Iteration 820: documented selected verification path-link safety.
+- Iteration 821: rejected selected verification paths beneath symlinked parents.
+- Iteration 822: documented selected verification parent-link safety.
+- Iteration 823: required relative selected verification paths with absolute-path coverage.
+- Iteration 824: documented relative selected verification paths.
+- Iteration 825: added selected verification traversal-escape coverage.
+- Iteration 826: documented selected verification containment and escape handling.
+- Iteration 827: rejected empty selected verification paths with exact coverage.
+- Iteration 828: documented selected verification empty-path validation.
+- Iteration 829: rejected NUL selected verification paths with exact coverage.
+- Iteration 830: documented selected verification NUL validation.
+- Iteration 831: rejected symlinked `sha256` stores during verification.
+- Iteration 832: documented symlinked `sha256` store protection.
+- Iteration 833: rejected symlinked `sha256` stores before migration writes.
+- Iteration 834: documented migration-time object-store link safety.
+- Iteration 835: added GC symlinked-store regression coverage.
+- Iteration 836: documented GC symlinked-store handling in the technical review.
+- Iteration 837: recorded `test_gc_rejects_symlink_object_store` coverage.
+- Iteration 838: added symlinked object-shard verification coverage.
+- Iteration 839: documented symlinked object-shard handling in the technical review.
+- Iteration 840: added GC symlinked-shard regression coverage.
+- Iteration 841: documented GC symlinked-shard handling in the technical review.
+- Iteration 842: recorded `test_gc_rejects_symlink_object_shard` coverage.
+- Iteration 843: rejected symlinked object-shard parents before migration publication.
+- Iteration 844: documented migration object-shard parent-link safety.
+- Iteration 845: recorded `test_migrate_rejects_symlink_object_shard` coverage.
+- Iteration 846: rejected symlink migration paths before object publication.
+- Iteration 847: documented migration destination-link safety.
+- Iteration 848: added migration destination-parent symlink coverage.
+- Iteration 849: documented migration destination-parent link safety.
+- Iteration 850: recorded `test_process_record_rejects_symlink_destination_parent` coverage.
+- Iteration 851: added `gc_summary` symlinked-shard coverage.
+- Iteration 852: documented GC summary shard-link handling.
+- Iteration 853: recorded `test_gc_summary_rejects_symlink_object_shard` coverage.
+- Iteration 854: added `gc_summary` symlinked-store coverage.
+- Iteration 855: documented GC summary store-link handling.
+- Iteration 856: recorded `test_gc_summary_rejects_symlink_object_store` coverage.
+- Iteration 857: added GC symlinked-object-file regression coverage.
+- Iteration 858: documented GC symlinked-object-file handling.
+- Iteration 859: recorded `test_gc_rejects_symlink_object_file` coverage.
+- Iteration 860: added GC malformed object-name regression coverage.
+- Iteration 861: documented malformed object-name handling in the technical review.
+- Iteration 862: recorded `test_gc_rejects_malformed_object_file` coverage.
+- Iteration 863: added `gc_summary` malformed object-name regression coverage.
+- Iteration 864: documented GC summary malformed object-name handling.
+- Iteration 865: recorded `test_gc_summary_rejects_malformed_object_file` coverage.
+- Iteration 866: rejected negative direct migration and verification limits.
+- Iteration 867: documented direct negative limit validation.
+- Iteration 868: rejected boolean direct migration and verification limits.
+- Iteration 869: documented strict direct limit type validation.
+- Iteration 870: rejected symlinked discovery selections and parents.
+- Iteration 871: documented discovery selection link safety.
+- Iteration 872: added direct symlink-selection discovery coverage.
+- Iteration 873: documented direct symlink-selection discovery safety.
+- Iteration 874: recorded `test_visible_files_rejects_symlink_selection` coverage.
+- Iteration 875: rejected symlinked discovery roots.
+- Iteration 876: documented discovery root link safety.
+- Iteration 877: recorded `test_visible_files_rejects_symlink_root` coverage.
+- Iteration 878: rejected symlinked discovery exclusions.
+- Iteration 879: documented excluded-root link safety.
+- Iteration 880: recorded `test_visible_files_rejects_symlink_excluded_root` coverage.
+- Iteration 881: validated discovery exclude patterns before traversal.
+- Iteration 882: documented discovery exclude-pattern validation.
+- Iteration 883: recorded `test_visible_files_rejects_non_string_exclude_pattern` coverage.
+- Iteration 884: validated discovery excluded-root types before resolution.
+- Iteration 885: documented excluded-root type validation.
+- Iteration 886: recorded `test_visible_files_rejects_invalid_excluded_root` coverage.
+- Iteration 887: validated discovery root and selection path types.
+- Iteration 888: documented discovery root and selection type validation.
+- Iteration 889: recorded `test_visible_files_rejects_invalid_root_and_selection` coverage.
+- Iteration 890: validated discovery progress and verbose flag types.
+- Iteration 891: documented discovery flag validation.
+- Iteration 892: recorded `test_visible_files_rejects_invalid_flags` coverage.
+- Iteration 893: validated discovery exclude container type.
+- Iteration 894: documented discovery exclude-container validation.
+- Iteration 895: recorded `test_visible_files_rejects_invalid_exclude_container` coverage.
+- Iteration 897: documented excluded-root type validation and migration compatibility.
+- Iteration 898: recorded `test_visible_files_rejects_invalid_excluded_root` coverage.
+- Iteration 899: rejected file-valued discovery exclusions.
+- Iteration 900: documented excluded-root directory validation.
+- Iteration 901: recorded `test_visible_files_rejects_file_excluded_root` coverage.
+- Iteration 903: documented excluded-root validation and external-store compatibility.
+- Iteration 904: recorded `test_visible_files_rejects_file_excluded_root` coverage and external-store compatibility.
+- Iteration 905: added symlinked excluded-root parent coverage.
+- Iteration 906: documented excluded-root parent-link handling.
+- Iteration 907: recorded `test_visible_files_rejects_symlinked_excluded_root_parent` coverage.
+- Iteration 908: reviewed excluded-root race behavior; no locking added.
+- Iteration 909: added positive external excluded-root coverage.
+- Iteration 910: documented positive external excluded-root support.
+- Iteration 911: recorded `test_visible_files_accepts_external_excluded_root` coverage.
+- Iteration 912: added missing external excluded-root coverage.
+- Iteration 913: documented missing external excluded-root behavior.
+- Iteration 914: recorded `test_visible_files_accepts_missing_external_excluded_root` coverage.
+- Iteration 915: reviewed excluded-root permission behavior; no platform-dependent test added.
+- Iteration 916: recorded excluded-root permission review and fail-closed behavior.
+- Iteration 917: confirmed direct `os.walk` error propagation coverage.
+- Iteration 918: documented direct `os.walk` error propagation.
+- Iteration 919: recorded `test_visible_files_propagates_walk_errors` coverage.
+- Iteration 920: added symlink-directory traversal coverage.
+- Iteration 921: documented symlink-directory traversal safety.
+- Iteration 922: recorded `test_visible_files_does_not_follow_symlink_directories` coverage.
+- Iteration 923: added post-filter deterministic ordering coverage.
+- Iteration 924: documented deterministic traversal ordering.
+- Iteration 925: recorded `test_visible_files_sorts_after_symlink_filtering` coverage.
+- Iteration 926: added ledger-name metadata exclusion coverage.
+- Iteration 927: documented ledger-name metadata exclusion.
+- Iteration 928: recorded `test_visible_files_is_sorted_and_excludes_metadata` coverage.
+- Iteration 929: documented exact metadata-name matching; no case folding added.
+- Iteration 930: recorded exact metadata-name matching.
+- Iteration 931: added metadata exclusion precedence coverage.
+- Iteration 932: documented metadata exclusion precedence.
+- Iteration 933: recorded metadata exclusion precedence coverage.
+- Iteration 934: added nested metadata exclusion coverage.
+- Iteration 935: documented nested metadata exclusion.
+- Iteration 936: recorded nested metadata exclusion coverage.
+- Iteration 937: added nested `.objects` pruning coverage.
+- Iteration 938: documented nested `.objects` pruning.
+- Iteration 939: recorded nested `.objects` pruning coverage.
+- Iteration 940: added nested `@eaDir` pruning coverage.
+- Iteration 941: documented nested `@eaDir` pruning.
+- Iteration 942: recorded nested `@eaDir` pruning coverage.
+- Iteration 943: added overlapping excluded-subtree coverage.
+- Iteration 944: documented overlapping excluded-subtree handling.
+- Iteration 945: recorded `test_visible_files_prunes_overlapping_excluded_subtree` coverage.
+- Iteration 946: added discovery-root exclusion equality coverage.
+- Iteration 947: documented excluded-root equality handling.
+- Iteration 948: recorded `test_visible_files_excludes_discovery_root` coverage.
+- Iteration 949: added selected-subdirectory exclusion coverage.
+- Iteration 950: documented selected-subdirectory exclusion handling.
+- Iteration 951: recorded `test_visible_files_excludes_selected_subdirectory` coverage.
+- Iteration 952: added selected path-prefix boundary coverage.
+- Iteration 953: documented selected path-prefix boundary handling.
+- Iteration 954: recorded `test_visible_files_does_not_confuse_path_prefixes` coverage.
+- Iteration 955: added relative-path resolution coverage.
+- Iteration 956: documented relative/absolute path resolution.
+- Iteration 957: recorded `test_visible_files_resolves_relative_paths` coverage.
+- Iteration 958: added parent-path normalization coverage.
+- Iteration 959: documented `..` path normalization.
+- Iteration 960: recorded `test_visible_files_normalizes_parent_paths` coverage.
+- Iteration 961: added current-directory path-component coverage.
+- Iteration 962: documented `.` path-component normalization.
+- Iteration 963: recorded `test_visible_files_normalizes_parent_paths` coverage for `.`/`..` paths.
+- Iteration 964: added normalized missing-selection coverage.
+- Iteration 965: documented normalized missing-selection handling.
+- Iteration 966: recorded `test_visible_files_rejects_normalized_missing_selection` coverage.
+- Iteration 967: added normalized missing-excluded-root coverage.
+- Iteration 968: documented normalized missing-excluded-root handling.
+- Iteration 969: recorded `test_visible_files_accepts_normalized_missing_excluded_root` coverage.
+- Iteration 970: verified absolute external-root compatibility via existing coverage.
+- Iteration 971: recorded `test_visible_files_accepts_external_excluded_root` absolute-path coverage.
+- Iteration 972: added relative external-root coverage.
+- Iteration 973: documented relative external-root handling.
+- Iteration 974: recorded `test_visible_files_accepts_relative_external_excluded_root` coverage.
+- Iteration 975: added external parent-component normalization coverage.
+- Iteration 976: documented external `..` path normalization.
+- Iteration 977: recorded external parent-component normalization coverage.
+- Iteration 978: added external current-directory component coverage.
+- Iteration 987: documented external path case semantics.
+- Iteration 988: recorded external path case review.
+- Iteration 989: documented external Unicode path semantics.
+- Iteration 990: recorded external Unicode path review.
+- Iteration 991: documented external bytes/encoding boundary.
+- Iteration 992: added byte-root rejection coverage.
+- Iteration 993: documented byte-root rejection.
+- Iteration 994: recorded byte-root rejection coverage.
+- Iteration 995: added selected byte-path rejection coverage.
+- Iteration 996: documented selected byte-path rejection.
+- Iteration 997: recorded selected byte-path rejection coverage.
+- Iteration 998: added excluded-root byte-path rejection coverage.
+- Iteration 999: documented excluded-root byte-path rejection.
+- Iteration 1000: recorded excluded-root byte-path rejection coverage.
+- Iteration 1001: added byte exclude-pattern rejection coverage.
+- Iteration 1002: documented byte exclude-pattern rejection.
+- Iteration 1003: recorded byte exclude-pattern rejection coverage.
+- Iteration 1004: reviewed exclude-pattern NUL/newline handling; no extra rejection added.
+- Iteration 1005: recorded exclude-pattern NUL/newline review.
+- Iteration 1006: reviewed wildcard precedence over reserved-directory pruning.
+- Iteration 1007: recorded wildcard-vs-reserved pruning review.
+- Iteration 1008: added wildcard-vs-symlink filtering coverage.
+- Iteration 1009: documented wildcard-vs-symlink filtering.
+- Iteration 1010: recorded wildcard-vs-symlink filtering coverage.
+- Iteration 1011: verified nested metadata wildcard precedence via existing coverage.
+- Iteration 1012: documented nested metadata wildcard precedence.
+- Iteration 1013: added wildcard-vs-excluded-subtree coverage.
+- Iteration 1014: documented wildcard-vs-excluded-subtree handling.
+- Iteration 1015: recorded wildcard-vs-excluded-subtree coverage.
+- Iteration 1016: added duplicate exclude-pattern coverage.
+- Iteration 1017: documented duplicate exclude-pattern handling.
+- Iteration 1018: recorded duplicate exclude-pattern coverage.
+- Iteration 1019: added empty exclude-pattern coverage.
+- Iteration 1020: documented empty exclude-pattern handling.
+- Iteration 1021: recorded empty exclude-pattern coverage.
+- Iteration 1022: added whitespace-only exclude-pattern coverage.
+- Iteration 1023: documented whitespace-only exclude-pattern handling.
+- Iteration 1024: recorded whitespace-only exclude-pattern coverage.
+- Iteration 1025: documented basename-only exclude matching.
+- Iteration 1026: recorded basename-only exclude matching.
+- Iteration 1027: added path-separator pattern coverage.
+- Iteration 1028: documented path-separator pattern behavior.
+- Iteration 1029: recorded path-separator pattern coverage.
+- Iteration 1030: added Windows-style separator pattern coverage.
+- Iteration 1031: documented Windows-style separator behavior.
+- Iteration 1032: recorded Windows-style separator coverage.
+- Iteration 1033: added glob-metacharacter confinement coverage.
+- Iteration 1034: documented glob-metacharacter confinement.
+- Iteration 1035: recorded glob-metacharacter confinement coverage.
+- Iteration 1036: documented standard `fnmatch` escaping semantics.
+- Iteration 1037: recorded pattern escaping review.
+- Iteration 1038: documented host `fnmatch` case behavior.
+- Iteration 1039: recorded exclude-pattern case review.
+- Iteration 1040: documented host-only `fnmatch` behavior.
+- Iteration 1041: recorded `fnmatch` platform review.
+- Iteration 1042: documented malformed-pattern handling.
+- Iteration 1043: recorded malformed-pattern review.
+- Iteration 1044: documented pattern length/resource behavior.
+- Iteration 1045: recorded pattern length/resource review.
+- Iteration 1046: documented exclude-pattern count/resource behavior.
+- Iteration 1047: recorded exclude-pattern count/resource review.
+- Iteration 1048: added empty-tree exclude-pattern regression coverage.
+- Iteration 1049: documented empty-tree exclude behavior.
+- Iteration 1050: recorded empty-tree exclude behavior.
+- Iteration 1051: documented file-versus-directory exclude behavior.
+- Iteration 1052: recorded file-versus-directory exclude behavior.
+- Iteration 1053: added excluded-directory-symlink regression coverage.
+- Iteration 1054: documented excluded directory symlink handling.
+- Iteration 1055: recorded excluded directory symlink handling.
+- Iteration 1056: added dangling-symlink exclude regression coverage.
+- Iteration 1057: documented symlink-file exclude handling.
+- Iteration 1058: recorded symlink-file exclude handling.
+- Iteration 1059: added excluded-root precedence regression coverage.
+- Iteration 1060: documented excluded-root precedence.
+- Iteration 1061: recorded excluded-root precedence.
+- Iteration 1062: added trailing-separator excluded-root regression coverage.
+- Iteration 1063: documented trailing-separator excluded-root normalization.
+- Iteration 1064: recorded trailing-separator excluded-root handling.
+- Iteration 1065: documented relative excluded-root resolution semantics.
+- Iteration 1066: recorded relative excluded-root handling.
+- Iteration 1067: added parent-alias excluded-root regression coverage.
+- Iteration 1068: documented `..` excluded-root canonicalization.
+- Iteration 1069: recorded `..` excluded-root handling.
+- Iteration 1070: documented symlinked excluded-root component rejection.
+- Iteration 1071: recorded symlinked excluded-root component handling.
+- Iteration 1072: added missing excluded-root canonicalization coverage.
+- Iteration 1073: documented missing excluded-root handling.
+- Iteration 1074: recorded missing excluded-root handling.
+- Iteration 1075: documented excluded-root permission-error propagation.
+- Iteration 1076: recorded excluded-root permission-error handling.
+- Iteration 1077: documented lexical mount/device boundary for excluded roots.
+- Iteration 1078: recorded root/excluded-root device boundary.
+- Iteration 1079: added alternate-spelling selection regression coverage.
+- Iteration 1080: documented alternate-spelling selection handling.
+- Iteration 1081: recorded alternate-spelling selection handling.
+- Iteration 1082: added trailing-separator selection regression coverage.
+- Iteration 1083: documented trailing-separator selection normalization.
+- Iteration 1084: recorded trailing-separator selection handling.
+- Iteration 1085: added parent-alias selection regression coverage.
+- Iteration 1086: documented parent-alias selection handling.
+- Iteration 1087: recorded parent-alias selection handling.
+- Iteration 1088: documented missing-selection failure handling.
+- Iteration 1089: recorded missing-selection handling.
+- Iteration 1090: documented symlinked selection rejection.
+- Iteration 1091: recorded symlinked selection handling.
+- Iteration 1092: documented inaccessible-selection error propagation.
+- Iteration 1093: recorded inaccessible-selection handling.
+- Iteration 1094: added selected reserved-name regression coverage.
+- Iteration 1095: documented selected-file safety filtering.
+- Iteration 1096: recorded selected-file safety filtering.
+- Iteration 1097: added selected-file excluded-root precedence coverage.
+- Iteration 1098: documented selected-file excluded-root precedence.
+- Iteration 1099: recorded selected-file excluded-root precedence.
+- Iteration 1100: added selected-file external-exclusion regression coverage.
+- Iteration 1101: documented selected-file external excluded-root handling.
+- Iteration 1102: recorded selected-file external excluded-root handling.
+- Iteration 1103: added relative external selected-file regression coverage.
+- Iteration 1104: documented relative external selected-file exclusion.
+- Iteration 1105: recorded relative external selected-file exclusion.
+- Iteration 1106: added normalized relative external selected-file coverage.
+- Iteration 1107: documented normalized relative external selected-file handling.
+- Iteration 1108: recorded normalized relative external selected-file exclusion.
+- Iteration 1109: added missing external selected-file regression coverage.
+- Iteration 1110: documented missing external selected-file exclusion.
+- Iteration 1111: recorded missing external selected-file exclusion.
+- Iteration 1112: documented selected-file excluded-root error propagation.
+- Iteration 1113: recorded selected-file excluded-root permission handling.
+- Iteration 1114: documented selected-file external mount/device scope.
+- Iteration 1115: recorded selected-file external mount/device scope.
+- Iteration 1116: added selected-file excluded-root alias coverage.
+- Iteration 1117: documented selected-file excluded-root alias handling.
+- Iteration 1118: recorded selected-file excluded-root alternate spelling.
+- Iteration 1119: added selected-file excluded-root trailing-separator coverage.
+- Iteration 1120: documented selected-file excluded-root trailing-separator normalization.
+- Iteration 1121: recorded selected-file excluded-root trailing-separator handling.
+- Iteration 1122: documented selected-file excluded-root parent aliases.
+- Iteration 1123: recorded selected-file excluded-root parent aliases.
+- Iteration 1124: documented selected symlink validation ordering.
+- Iteration 1125: recorded selected symlink validation ordering.
+- Iteration 1126: fixed dangling selected-symlink validation ordering.
+- Iteration 1127: recorded dangling selected-symlink fix.
+- Iteration 1128: added dangling selected-directory symlink coverage.
+- Iteration 1129: documented dangling selected-directory symlink handling.
+- Iteration 1130: recorded dangling selected-directory symlink handling.
+- Iteration 1131: added dangling symlink-parent selection coverage.
+- Iteration 1132: documented dangling symlink-parent selection handling.
+- Iteration 1133: recorded dangling symlink-parent selection handling.
+- Iteration 1134: added dangling root-ancestor regression coverage.
+- Iteration 1135: documented dangling root-ancestor handling.
+- Iteration 1136: recorded dangling root-ancestor handling.
+- Iteration 1137: added dangling root-symlink regression coverage.
+- Iteration 1138: documented dangling root-symlink diagnostic ordering.
+- Iteration 1139: recorded dangling root-symlink diagnostic ordering.
+- Iteration 1140: added dangling root lexical-alias regression coverage.
+- Iteration 1141: documented dangling root lexical-alias handling.
+- Iteration 1142: recorded dangling root lexical-alias handling.
+- Iteration 1143: added dangling excluded-root alias regression coverage.
+- Iteration 1144: documented dangling excluded-root alias handling.
+- Iteration 1145: recorded dangling excluded-root alias handling.
+- Iteration 1146: added trailing-separator excluded-root symlink coverage.
+- Iteration 1147: documented trailing-separator excluded-root symlink validation.
+- Iteration 1148: recorded trailing-separator excluded-root symlink handling.
+- Iteration 1149: added trailing-separator excluded-root symlink-parent coverage.
+- Iteration 1150: documented trailing-separator excluded-root symlink-parent handling.
+- Iteration 1151: recorded trailing-separator excluded-root symlink-parent handling.
+- Iteration 1152: added dangling trailing-separator excluded-root-parent coverage.
+- Iteration 1153: documented dangling trailing-separator excluded-root-parent handling.
+- Iteration 1154: recorded dangling trailing-separator excluded-root-parent handling.
+- Iteration 1155: added combined excluded-root alias/separator coverage.
+- Iteration 1156: documented combined excluded-root alias/separator handling.
+- Iteration 1157: recorded combined excluded-root alias/separator handling.
+- Iteration 1158: added dot-component excluded-root coverage.
+- Iteration 1159: documented dot-component excluded-root canonicalization.
+- Iteration 1160: recorded dot-component excluded-root handling.
+- Iteration 1161: added selected-file dot-alias coverage.
+- Iteration 1162: documented selected-file dot-alias handling.
+- Iteration 1163: recorded selected-file dot-alias handling.
+- Iteration 1164: added combined selected-file dot/separator coverage.
+- Iteration 1165: documented combined selected-file dot/separator handling.
+- Iteration 1166: recorded combined selected-file dot/separator handling.
+- Iteration 1167: added selected-file parent-alias/separator coverage.
+- Iteration 1168: documented selected-file parent-alias/separator handling.
+- Iteration 1169: recorded selected-file parent-alias/separator handling.
+- Iteration 1170: added selected-file redundant-separator coverage.
+- Iteration 1171: documented selected-file redundant-separator handling.
+- Iteration 1172: recorded selected-file redundant-separator handling.
+- Iteration 1173: added combined selected-file alias coverage.
+- Iteration 1174: documented combined selected-file alias handling.
+- Iteration 1175: recorded combined selected-file alias handling.
+- Iteration 1176: added aliased selected-file/external-exclusion coverage.
+- Iteration 1177: documented aliased selected-file external exclusion.
+- Iteration 1178: recorded aliased selected-file external exclusion.
+- Iteration 1179: added aliased selected-file missing-exclusion coverage.
+- Iteration 1180: documented aliased selected-file missing exclusion.
+- Iteration 1181: recorded aliased selected-file missing external exclusion.
+- Iteration 1182: added absolute external excluded-root alias coverage.
+- Iteration 1183: documented aliased selected-file external path normalization.
+- Iteration 1184: recorded aliased selected-file external path normalization.
+- Iteration 1185: added absolute external dot-alias coverage.
+- Iteration 1186: documented aliased selected-file external dot-path normalization.
+- Iteration 1187: recorded aliased selected-file external dot-path normalization.
+- Iteration 1188: added combined aliased external exclusion coverage.
+- Iteration 1189: documented combined aliased external exclusion handling.
+- Iteration 1190: recorded combined aliased external exclusion handling.
+- Iteration 1191: documented combined missing-path alias handling.
+- Iteration 1192: recorded combined missing-path alias handling.
+- Iteration 1193: added aliased selected-file symlink-exclusion coverage.
+- Iteration 1194: documented aliased selected-file symlink exclusion.
+- Iteration 1195: recorded aliased selected-file symlink exclusion.
+- Iteration 1196: added dangling aliased selected-file external-root coverage.
+- Iteration 1197: documented dangling aliased selected-file external-root handling.
+- Iteration 1198: recorded dangling aliased selected-file external-root handling.
+- Iteration 1199: added aliased external-root symlink-parent coverage.
+- Iteration 1200: documented aliased external-root symlink-parent handling.
+- Iteration 1201: recorded aliased external-root symlink-parent handling.
+- Iteration 1202: added aliased external-root permission-error coverage.
+- Iteration 1203: documented aliased external-root permission-error propagation.
+- Iteration 1204: recorded aliased external-root permission handling.
+- Iteration 1205: added aliased invalid external-root type coverage.
+- Iteration 1206: documented aliased external-root type validation.
+- Iteration 1207: recorded aliased external-root type validation.
+- Iteration 1208: added aliased external-root-file coverage.
+- Iteration 1209: documented aliased external-root-file handling.
+- Iteration 1210: recorded aliased external-root-file handling.
+- Iteration 1211: documented missing aliased external-root handling.
+- Iteration 1212: recorded missing aliased external-root handling.
+- Iteration 1213: rejected file-valued excluded-root parents.
+- Iteration 1214: documented file-valued excluded-root-parent rejection.
+- Iteration 1215: recorded file-valued excluded-root-parent handling.
+- Iteration 1216: documented missing-ancestor excluded-root handling.
+- Iteration 1217: recorded missing-ancestor excluded-root handling.
+- Iteration 1218: documented symlink-ancestor/missing-descendant handling.
+- Iteration 1219: recorded symlink-ancestor/missing-descendant handling.
+- Iteration 1220: added denied excluded-root-ancestor coverage.
+- Iteration 1221: documented denied excluded-root-ancestor handling.
+- Iteration 1222: recorded denied excluded-root-ancestor handling.
+- Iteration 1223: added root `is_symlink` permission-error coverage.
+- Iteration 1224: added excluded-root `is_symlink` permission-error coverage.
+- Iteration 1225: documented excluded-root `is_symlink` error propagation.
+- Iteration 1226: recorded excluded-root `is_symlink` error propagation.
+- Iteration 1227: added root `.is_dir()` permission-error coverage.
+- Iteration 1228: added excluded-root `.is_dir()` permission-error coverage.
+- Iteration 1229: documented excluded-root `.is_dir()` error propagation.
+- Iteration 1230: recorded excluded-root `.is_dir()` error propagation.
+- Iteration 1231: documented excluded-root parent `.exists()` error propagation.
+- Iteration 1232: recorded excluded-root parent `.exists()` error propagation.
+- Iteration 1233: added excluded-root `.resolve()` permission-error coverage.
+- Iteration 1234: documented excluded-root `.resolve()` error propagation.
+- Iteration 1235: recorded excluded-root `.resolve()` error propagation.
+- Iteration 1236: added root `.resolve()` permission-error coverage.
+- Iteration 1237: documented root `.resolve()` error propagation.
+- Iteration 1238: recorded root `.resolve()` error propagation.
+- Iteration 1239: added selected `.resolve()` permission-error coverage.
+- Iteration 1240: documented selected `.resolve()` error propagation.
+- Iteration 1241: recorded selected `.resolve()` error propagation.
+- Iteration 1242: added selected `.exists()` permission-error coverage.
+- Iteration 1243: documented selected `.exists()` error propagation.
+- Iteration 1244: recorded selected `.exists()` error propagation.
+- Iteration 1245: documented selected-parent fail-closed handling.
+- Iteration 1246: recorded selected-parent fail-closed handling.
+- Iteration 1247: added selected-parent link permission-error coverage.
+- Iteration 1248: documented selected-parent `.is_symlink()` error propagation.
+- Iteration 1249: recorded selected-parent `.is_symlink()` error propagation.
+- Iteration 1250: added selected-parent resolution-order coverage.
+- Iteration 1251: documented selected-parent resolution ordering.
+- Iteration 1252: recorded selected-parent resolution ordering.
+- Iteration 1253: added direct selected-link resolution-order coverage.
+- Iteration 1254: documented direct selected-link resolution ordering.
+- Iteration 1255: recorded direct selected-link resolution ordering.
+- Iteration 1256: added selected link-check error-ordering coverage.
+- Iteration 1257: documented selected link-check error ordering.
+- Iteration 1258: recorded selected link-check error ordering.
+- Iteration 1259: added nested selected-parent symlink coverage.
+- Iteration 1260: documented selected-parent loop coverage.
+- Iteration 1261: recorded selected-parent loop coverage.
+- Iteration 1262: added nested root-parent symlink coverage.
+- Iteration 1263: documented root-parent loop coverage.
+- Iteration 1264: recorded root-parent loop coverage.
+- Iteration 1265: added root link-check error-ordering coverage.
+- Iteration 1266: documented root link-check error ordering.
+- Iteration 1267: recorded root link-check error ordering.
+- Iteration 1268: added root `.is_dir()` permission-error coverage.
+- Iteration 1269: documented root `.is_dir()` error ordering.
+- Iteration 1270: recorded root `.is_dir()` error ordering.
+- Iteration 1271: added selected `.is_file()` permission-error coverage.
+- Iteration 1272: documented selected `.is_file()` error ordering.
+- Iteration 1273: recorded selected `.is_file()` error ordering.
+- Iteration 1274: added selected metadata link-check coverage.
+- Iteration 1275: documented selected-file metadata error propagation.
+- Iteration 1276: recorded selected-file metadata error propagation.
+- Iteration 1277: added selected reserved-name containment-order coverage.
+- Iteration 1278: documented selected reserved-name ordering.
+- Iteration 1279: recorded selected reserved-name ordering.
+- Iteration 1280: added selected exclude-pattern containment-order coverage.
+- Iteration 1281: documented selected exclude-pattern ordering.
+- Iteration 1282: recorded selected exclude-pattern ordering.
+- Iteration 1283: added matching-pattern symlink filtering coverage.
+- Iteration 1284: documented selected-file symlink filtering ordering.
+- Iteration 1285: recorded selected-file symlink filtering ordering.
+- Iteration 1286: added matching-pattern ledger filtering coverage.
+- Iteration 1287: documented selected-file ledger filtering ordering.
+- Iteration 1288: recorded selected-file ledger filtering ordering.
+- Iteration 1289: added selected metadata wildcard filtering coverage.
+- Iteration 1290: documented selected metadata wildcard filtering.
+- Iteration 1291: recorded selected metadata wildcard filtering.
+- Iteration 1292: added selected-directory traversal-scope coverage.
+- Iteration 1293: documented selected-directory traversal scope.
+- Iteration 1294: recorded selected-directory traversal scope.
+- Iteration 1295: added selected-directory exclusion-ordering coverage.
+- Iteration 1296: documented selected-directory exclusion ordering.
+- Iteration 1297: recorded selected-directory exclusion ordering.
+- Iteration 1298: added selected-directory symlink coverage.
+- Iteration 1299: documented selected-directory symlink handling.
+- Iteration 1300: recorded selected-directory symlink handling.
+- Iteration 1301: added selected-directory parent-symlink coverage.
+- Iteration 1302: documented selected-directory parent-symlink handling.
+- Iteration 1303: recorded selected-directory parent-symlink handling.
+- Iteration 1304: added missing selected-directory coverage.
+- Iteration 1305: documented missing selected-directory behavior.
+- Iteration 1306: recorded missing selected-directory behavior.
+- Iteration 1307: added selected-directory file-classification coverage.
+- Iteration 1308: documented selected-directory file classification.
+- Iteration 1309: recorded selected-directory file classification.
+- Iteration 1310: pruned selected directories matching exclusion patterns before traversal.
+- Iteration 1311: documented selected-directory pattern pruning.
+- Iteration 1312: recorded selected-directory pattern pruning.
+- Iteration 1313: added selected reserved-directory pruning coverage.
+- Iteration 1314: documented selected reserved-directory pruning.
+- Iteration 1315: recorded selected reserved-directory pruning.
+- Iteration 1316: added selected-directory progress/pruning coverage.
+- Iteration 1317: documented selected-directory progress behavior.
+- Iteration 1318: recorded selected-directory progress behavior.
+- Iteration 1319: added selected-directory verbose/pruning coverage.
+- Iteration 1320: documented selected-directory verbose behavior.
+- Iteration 1321: recorded selected-directory verbose behavior.
+- Iteration 1322: added normalized selected-directory pruning coverage.
+- Iteration 1323: documented normalized selected-directory pruning.
+- Iteration 1324: recorded normalized selected-directory pruning.
+- Iteration 1325: added trailing-separator selected-directory pruning coverage.
+- Iteration 1326: documented trailing-separator selected-directory pruning.
+- Iteration 1327: recorded trailing-separator selected-directory pruning.
+- Iteration 1328: added redundant-separator selected-directory pruning coverage.
+- Iteration 1329: documented redundant-separator selected-directory pruning.
+- Iteration 1330: recorded redundant-separator selected-directory pruning.
+- Iteration 1331: added selected-directory parent-alias pruning coverage.
+- Iteration 1332: documented selected-directory parent-alias pruning.
+- Iteration 1333: recorded selected-directory parent-alias pruning.
+- Iteration 1334: added selected-directory external-root exclusion coverage.
+- Iteration 1335: documented selected-directory external-root exclusion.
+- Iteration 1336: recorded selected-directory external-root exclusion.
+- Iteration 1337: added normalized external-root selected-directory exclusion coverage.
+- Iteration 1338: documented normalized external-root selected-directory exclusion.
+- Iteration 1339: recorded normalized external-root selected-directory exclusion.
+- Iteration 1340: added external-root separator selected-directory coverage.
+- Iteration 1341: documented external-root separator selected-directory handling.
+- Iteration 1342: recorded external-root separator selected-directory handling.
+- Iteration 1343: added external-root redundant-separator selected-directory coverage.
+- Iteration 1344: documented external-root redundant-separator selected-directory handling.
+- Iteration 1345: recorded external-root redundant-separator selected-directory handling.
+- Iteration 1346: added external-root parent-alias selected-directory coverage.
+- Iteration 1347: documented external-root parent-alias selected-directory handling.
+- Iteration 1348: recorded external-root parent-alias selected-directory handling.
+- Iteration 1349: added external-root symlink selected-directory coverage.
+- Iteration 1350: documented external-root symlink selected-directory handling.
+- Iteration 1351: recorded external-root symlink selected-directory handling.
+- Iteration 1352: added external-root parent-symlink selected-directory coverage.
+- Iteration 1353: documented external-root parent-symlink selected-directory handling.
+- Iteration 1354: recorded external-root parent-symlink selected-directory handling.
+- Iteration 1355: added dangling external-root parent selected-directory coverage.
+- Iteration 1356: documented dangling external-root parent selected-directory handling.
+- Iteration 1357: recorded dangling external-root parent selected-directory handling.
+- Iteration 1358: added external-root permission selected-directory coverage.
+- Iteration 1359: documented external-root permission selected-directory handling.
+- Iteration 1360: recorded external-root permission selected-directory handling.
+- Iteration 1361: added file-valued external-root selected-directory coverage.
+- Iteration 1362: documented file-valued external exclusion for selected directories.
+- Iteration 1363: recorded file-valued external exclusion for selected directories.
+- Iteration 1364: added missing external-root selected-directory coverage.
+- Iteration 1365: documented missing external-root selected-directory handling.
+- Iteration 1366: recorded missing external-root selected-directory handling.
+- Iteration 1367: added selected-directory external-root case-alias coverage.
+- Iteration 1368: documented selected-directory external-root case semantics.
+- Iteration 1369: recorded selected-directory external-root case semantics.
+- Iteration 1370: added selected-directory external-root Unicode-alias coverage.
+- Iteration 1371: documented selected-directory external-root Unicode semantics.
+- Iteration 1372: recorded selected-directory external-root Unicode semantics.
+- Iteration 1373: added missing Unicode external-root selected-directory coverage.
+- Iteration 1374: documented missing Unicode external exclusion handling.
+- Iteration 1375: recorded missing Unicode external exclusion handling.
+- Iteration 1376: added relative external-root selected-directory exclusion coverage.
+- Iteration 1377: documented relative external-root selected-directory exclusion.
+- Iteration 1378: recorded relative external-root selected-directory exclusion.
+- Iteration 1379: added relative external-root parent-alias selected-directory coverage.
+- Iteration 1380: documented relative external-root parent-alias exclusion.
+- Iteration 1381: recorded relative external-root parent-alias exclusion.
+- Iteration 1382: added relative external-root trailing-separator selected-directory coverage.
+- Iteration 1383: documented relative external-root trailing-separator exclusion.
+- Iteration 1384: recorded relative external-root trailing-separator exclusion.
+- Iteration 1385: added relative external-root redundant-separator selected-directory coverage.
+- Iteration 1386: documented relative external-root redundant-separator exclusion.
+- Iteration 1387: recorded relative external-root redundant-separator exclusion.
+- Iteration 1388: added relative Unicode external-root selected-directory coverage.
+- Iteration 1389: documented relative Unicode external-root selected-directory semantics.
+- Iteration 1390: recorded relative Unicode external-root selected-directory semantics.
+- Iteration 1391: added missing relative external-root selected-directory coverage.
+- Iteration 1392: documented missing relative external exclusion handling.
+- Iteration 1393: recorded missing relative external exclusion handling.
+- Iteration 1394: added missing relative parent-alias selected-directory coverage.
+- Iteration 1395: documented missing relative parent-alias selected-directory handling.
+- Iteration 1396: recorded missing relative parent-alias selected-directory handling.
+- Iteration 1397: added relative dot-alias selected-directory exclusion coverage.
+- Iteration 1398: documented relative dot-alias selected-directory exclusion.
+- Iteration 1399: recorded relative dot-alias selected-directory exclusion.
+- Iteration 1400: added combined relative alias selected-directory exclusion coverage.
+- Iteration 1401: documented combined relative alias selected-directory exclusion.
+- Iteration 1402: recorded combined relative alias selected-directory exclusion.
+- Iteration 1403: added mixed relative alias/separator selected-directory coverage.
+- Iteration 1404: documented mixed relative alias/separator selected-directory exclusion.
+- Iteration 1405: recorded mixed relative alias/separator selected-directory exclusion.
+- Iteration 1406: added nested excluded-root alias selected-directory coverage.
+- Iteration 1407: documented nested excluded-root alias handling.
+- Iteration 1408: recorded nested excluded-root alias handling.
+- Iteration 1409: added trailing excluded-root alias selected-directory coverage.
+- Iteration 1410: documented trailing excluded-root alias handling.
+- Iteration 1411: recorded trailing excluded-root alias handling.
+- Iteration 1412: added redundant excluded-root alias selected-directory coverage.
+- Iteration 1413: documented redundant excluded-root alias handling.
+- Iteration 1414: recorded redundant excluded-root alias handling.
+- Iteration 1415: added combined Unicode/separator external-root selected-directory coverage.
+- Iteration 1416: documented combined Unicode/separator selected-directory alias semantics.
+- Iteration 1417: recorded combined Unicode/separator selected-directory alias semantics.
+- Iteration 1418: added trailing Unicode-separator selected-directory coverage.
+- Iteration 1419: documented trailing Unicode-separator selected-directory semantics.
+- Iteration 1420: recorded trailing Unicode-separator selected-directory semantics.
+- Iteration 1421: added mixed Unicode parent-alias selected-directory coverage.
+- Iteration 1422: documented mixed Unicode parent-alias selected-directory semantics.
+- Iteration 1423: recorded mixed Unicode parent-alias selected-directory semantics.
+- Iteration 1424: added Unicode parent-separator selected-directory coverage.
+- Iteration 1425: documented Unicode parent-separator selected-directory semantics.
+- Iteration 1426: recorded Unicode parent-separator selected-directory semantics.
+- Iteration 1427: added Unicode redundant-separator selected-directory coverage.
+- Iteration 1428: documented Unicode redundant-separator selected-directory semantics.
+- Iteration 1429: recorded Unicode redundant-separator selected-directory semantics.
+- Iteration 1430: added Unicode dot-alias selected-directory coverage.
+- Iteration 1431: documented Unicode dot-alias selected-directory semantics.
+- Iteration 1432: recorded Unicode dot-alias selected-directory semantics.
+- Iteration 1433: added mixed Unicode dot/parent selected-directory coverage.
+- Iteration 1434: documented mixed Unicode dot/parent selected-directory semantics.
+- Iteration 1435: recorded mixed Unicode dot/parent selected-directory semantics.
+- Iteration 1436: added Unicode combined redundant-alias selected-directory coverage.
+- Iteration 1437: documented Unicode combined redundant-alias selected-directory semantics.
+- Iteration 1438: recorded Unicode combined redundant-alias selected-directory semantics.
+- Iteration 1439: added combined dot/separator Unicode selected-directory coverage.
+- Iteration 1440: documented combined dot/separator Unicode selected-directory semantics.
+- Iteration 1441: recorded combined dot/separator Unicode selected-directory semantics.
+- Iteration 1442: added combined Unicode parent/separator selected-directory coverage.
+- Iteration 1443: documented combined Unicode parent/separator selected-directory semantics.
+- Iteration 1444: recorded combined Unicode parent/separator selected-directory semantics.
+- Iteration 1445: added nested Unicode-alias exclusion coverage after correcting host normalization assumptions.
+- Iteration 1446: documented nested Unicode lexical-alias exclusion semantics.
+- Iteration 1447: recorded nested Unicode lexical-alias exclusion semantics.
+- Iteration 1448: added sibling Unicode excluded-subtree coverage.
+- Iteration 1449: documented sibling Unicode excluded-subtree semantics.
+- Iteration 1450: recorded sibling Unicode excluded-subtree semantics.
+- Iteration 1451: added multiple-sibling Unicode excluded-subtree coverage.
+- Iteration 1452: documented multiple-sibling Unicode excluded-subtree semantics.
+- Iteration 1453: recorded multiple-sibling Unicode excluded-subtree semantics.
+- Iteration 1454: added reserved-sibling Unicode excluded-root coverage.
+- Iteration 1455: documented reserved-sibling Unicode-alias semantics.
+- Iteration 1456: recorded reserved-sibling Unicode-alias semantics.
+- Iteration 1457: added reserved-file-neighbor Unicode excluded-root coverage.
+- Iteration 1458: documented reserved-file-neighbor Unicode-alias semantics.
+- Iteration 1459: recorded reserved-file-neighbor Unicode-alias semantics.
+- Iteration 1460: added excluded-pattern-neighbor Unicode excluded-root coverage.
+- Iteration 1461: documented excluded-pattern-neighbor Unicode-alias semantics.
+- Iteration 1462: recorded excluded-pattern-neighbor Unicode-alias semantics.
+- Iteration 1463: added multiple excluded-pattern Unicode excluded-root coverage.
+- Iteration 1464: documented multiple excluded-pattern Unicode-alias semantics.
+- Iteration 1465: recorded multiple excluded-pattern Unicode-alias semantics.
+- Iteration 1466: added directory-name exclusion-pattern Unicode excluded-root coverage.
+- Iteration 1467: documented directory-name exclusion-pattern Unicode-alias semantics.
+- Iteration 1468: recorded directory-name exclusion-pattern Unicode-alias semantics.
+- Iteration 1469: added nested directory-pattern Unicode excluded-root coverage.
+- Iteration 1470: documented nested directory-pattern Unicode-alias semantics.
+- Iteration 1471: recorded nested directory-pattern Unicode-alias semantics.
+- Iteration 1472: added Unicode directory-name pattern excluded-root coverage.
+- Iteration 1473: documented Unicode directory-name pattern alias semantics.
+- Iteration 1474: recorded Unicode directory-name pattern alias semantics.
+- Iteration 1475: added exact Unicode-pattern excluded-root coverage after correcting host case assumptions.
+- Iteration 1476: documented exact Unicode-pattern alias semantics.
+- Iteration 1477: recorded exact Unicode-pattern alias semantics.
+- Iteration 1478: added Unicode wildcard-pattern excluded-root coverage.
+- Iteration 1479: documented Unicode wildcard-pattern alias semantics.
+- Iteration 1480: recorded Unicode wildcard-pattern alias semantics.
+- Iteration 1481: added separator-spanning wildcard Unicode excluded-root coverage.
+- Iteration 1482: documented separator-spanning wildcard alias semantics.
+- Iteration 1483: recorded separator-spanning wildcard alias semantics.
+- Iteration 1484: added Unicode character-class excluded-root coverage.
+- Iteration 1485: documented Unicode character-class alias semantics.
+- Iteration 1486: recorded Unicode character-class alias semantics.
+- Iteration 1487: added negated Unicode character-class excluded-root coverage after correcting fnmatch assumptions.
+- Iteration 1488: documented negated Unicode character-class alias semantics.
+- Iteration 1489: recorded negated Unicode character-class alias semantics.
+- Iteration 1490: added literal wildcard-character Unicode excluded-root coverage.
+- Iteration 1491: documented literal wildcard-character alias semantics.
+- Iteration 1492: recorded literal wildcard-character alias semantics.
+- Iteration 1493: added literal character-class bracket Unicode excluded-root coverage.
+- Iteration 1494: documented literal character-class bracket alias semantics.
+- Iteration 1495: recorded literal character-class bracket alias semantics.
+- Iteration 1496: added malformed Unicode character-class excluded-root coverage.
+- Iteration 1497: documented malformed Unicode character-class alias semantics.
+- Iteration 1498: recorded malformed Unicode character-class alias semantics.
+- Iteration 1499: added empty-pattern Unicode excluded-root coverage.
+- Iteration 1500: documented empty-pattern Unicode-alias semantics.
+- Iteration 1501: recorded empty-pattern Unicode-alias semantics.
+- Iteration 1502: added whitespace-pattern Unicode excluded-root coverage.
+- Iteration 1503: documented whitespace-pattern Unicode-alias semantics.
+- Iteration 1504: recorded whitespace-pattern Unicode-alias semantics.
+- Iteration 1505: added leading/trailing-space Unicode-pattern excluded-root coverage.
+- Iteration 1506: documented leading/trailing-space Unicode-alias semantics.
+- Iteration 1507: recorded leading/trailing-space Unicode-alias semantics.
+- Iteration 1508: added tab-containing Unicode-pattern excluded-root coverage.
+- Iteration 1509: documented tab-containing Unicode-alias semantics.
+- Iteration 1510: recorded tab-containing Unicode-alias semantics.
+- Iteration 1511: added newline-containing Unicode-pattern excluded-root coverage.
+- Iteration 1512: documented newline-containing Unicode-alias semantics.
+- Iteration 1513: recorded newline-containing Unicode-alias semantics.
+- Iteration 1514: added carriage-return Unicode-pattern excluded-root coverage.
+- Iteration 1515: documented carriage-return Unicode-alias semantics.
+- Iteration 1516: recorded carriage-return Unicode-alias semantics.
+- Iteration 1517: added form-feed Unicode-pattern excluded-root coverage.
+- Iteration 1518: documented form-feed Unicode-alias semantics.
+- Iteration 1519: recorded form-feed Unicode-alias semantics.
+- Iteration 1520: added vertical-tab Unicode-pattern excluded-root coverage.
+- Iteration 1521: documented vertical-tab Unicode-alias semantics.
+- Iteration 1522: recorded vertical-tab Unicode-alias semantics.
+- Iteration 1523: added mixed control-whitespace Unicode-pattern excluded-root coverage.
+- Iteration 1524: documented mixed control-whitespace Unicode-alias semantics.
+- Iteration 1525: recorded mixed control-whitespace Unicode-alias semantics.
+- Iteration 1526: added Unicode punctuation-pattern excluded-root coverage.
+- Iteration 1527: documented Unicode punctuation-pattern alias semantics.
+- Iteration 1528: recorded Unicode punctuation-pattern alias semantics.
+- Iteration 1529: added emoji-pattern Unicode excluded-root coverage.
+- Iteration 1530: documented emoji-pattern Unicode-alias semantics.
+- Iteration 1531: recorded emoji-pattern Unicode-alias semantics.
+- Iteration 1532: added combining-mark Unicode-pattern excluded-root coverage.
+- Iteration 1533: documented combining-mark Unicode-alias semantics.
+- Iteration 1534: recorded combining-mark Unicode-alias semantics.
+- Iteration 1535: added variation-selector Unicode-pattern excluded-root coverage.
+- Iteration 1536: documented variation-selector Unicode-alias semantics.
+- Iteration 1537: recorded variation-selector Unicode-alias semantics.
+- Iteration 1538: added zero-width Unicode-pattern excluded-root coverage.
+- Iteration 1539: documented zero-width Unicode-alias semantics.
+- Iteration 1540: recorded zero-width Unicode-alias semantics.
+- Iteration 1541: added bidirectional-control Unicode-pattern excluded-root coverage.
+- Iteration 1542: documented bidirectional-control Unicode-alias semantics.
+- Iteration 1543: recorded bidirectional-control Unicode-alias semantics.
+- Iteration 1544: added private-use Unicode-pattern excluded-root coverage.
+- Iteration 1545: documented private-use Unicode-alias semantics.
+- Iteration 1546: recorded private-use Unicode-alias semantics.
+- Iteration 1547: added noncharacter Unicode-pattern review coverage, constrained by host filesystem rejection.
+- Iteration 1548: documented noncharacter-pattern semantics and host filesystem limits.
+- Iteration 1549: recorded noncharacter-pattern semantics and host filesystem limits.
+- Iteration 1550: added supplementary-plane Unicode-pattern excluded-root coverage.
+- Iteration 1551: documented supplementary-plane Unicode-alias semantics.
+- Iteration 1552: recorded supplementary-plane Unicode-alias semantics.
+- Iteration 1553: added mathematical-symbol Unicode-pattern excluded-root coverage.
+- Iteration 1554: documented mathematical-symbol Unicode-alias semantics.
+- Iteration 1555: recorded mathematical-symbol Unicode-alias semantics.
+- Iteration 1556: added superscript/subscript Unicode-pattern excluded-root coverage.
+- Iteration 1557: documented superscript/subscript Unicode-alias semantics.
+- Iteration 1558: recorded superscript/subscript Unicode-alias semantics.
+- Iteration 1559: added enclosed-alphanumeric Unicode-pattern excluded-root coverage.
+- Iteration 1560: documented enclosed-alphanumeric Unicode-alias semantics.
+- Iteration 1561: recorded enclosed-alphanumeric Unicode-alias semantics.
+- Iteration 1562: added currency-symbol Unicode-pattern excluded-root coverage.
+- Iteration 1563: documented currency-symbol Unicode-alias semantics.
+- Iteration 1564: recorded currency-symbol Unicode-alias semantics.
+- Iteration 1565: added letterlike-symbol Unicode-pattern excluded-root coverage.
+- Iteration 1566: documented letterlike-symbol Unicode-alias semantics.
+- Iteration 1567: recorded letterlike-symbol Unicode-alias semantics.
+- Iteration 1568: added geometric-shape Unicode-pattern excluded-root coverage.
+- Iteration 1569: documented geometric-shape Unicode-alias semantics.
+- Iteration 1570: recorded geometric-shape Unicode-alias semantics.
+- Iteration 1571: added dingbat Unicode-pattern excluded-root coverage.
+- Iteration 1572: documented dingbat Unicode-alias semantics.
+- Iteration 1573: recorded dingbat Unicode-alias semantics.
+- Iteration 1574: added musical-symbol Unicode-pattern excluded-root coverage.
+- Iteration 1575: documented musical-symbol Unicode-alias semantics.
+- Iteration 1576: recorded musical-symbol Unicode-alias semantics.
+- Iteration 1577: added weather-symbol Unicode-pattern excluded-root coverage.
+- Iteration 1578: documented weather-symbol Unicode-alias semantics.
+- Iteration 1579: recorded weather-symbol Unicode-alias semantics.
+- Iteration 1580: documented transport-symbol Unicode-alias semantics.
+- Iteration 1581: recorded transport-symbol Unicode-alias semantics.
+- Iteration 1582: added map-symbol Unicode-pattern excluded-root coverage.
+- Iteration 1583: documented map-symbol Unicode-alias semantics.
+- Iteration 1584: recorded map-symbol Unicode-alias semantics.
+- Iteration 1585: added arrow-symbol Unicode-pattern excluded-root coverage.
+- Iteration 1586: documented arrow-symbol Unicode-alias semantics.
+- Iteration 1587: recorded arrow-symbol Unicode-alias semantics.
+- Iteration 1588: added decorative-symbol Unicode-pattern excluded-root coverage.
+- Iteration 1589: documented decorative-symbol Unicode-alias semantics.
+- Iteration 1590: recorded decorative-symbol Unicode-alias semantics.
+- Iteration 1591: added emoji-modifier Unicode-pattern excluded-root coverage.
+- Iteration 1592: documented emoji-modifier Unicode-alias semantics.
+- Iteration 1593: recorded emoji-modifier Unicode-alias semantics.
+- Iteration 1594: added emoji ZWJ-sequence Unicode-pattern excluded-root coverage.
+- Iteration 1595: documented emoji ZWJ-sequence Unicode-alias semantics.
+- Iteration 1596: recorded emoji ZWJ-sequence Unicode-alias semantics.
+- Iteration 1597: added flag-sequence Unicode-pattern excluded-root coverage.
+- Iteration 1598: documented flag-sequence Unicode-alias semantics.
+- Iteration 1599: recorded flag-sequence Unicode-alias semantics.
+- Iteration 1600: added tag-sequence pattern coverage without unsupported filenames.
+- Iteration 1601: documented tag-sequence semantics and filesystem limits.
+- Iteration 1602: recorded tag-sequence semantics and filesystem limits.
+- Iteration 1603: added combining-emoji Unicode-pattern excluded-root coverage.
+- Iteration 1604: documented combining-emoji Unicode-alias semantics.
+- Iteration 1605: recorded combining-emoji Unicode-alias semantics.
+- Iteration 1606: added emoji keycap Unicode-pattern excluded-root coverage.
+- Iteration 1607: documented emoji keycap Unicode-alias semantics.
+- Iteration 1608: recorded emoji keycap Unicode-alias semantics.
+- Iteration 1609: added emoji presentation-selector Unicode-pattern excluded-root coverage.
+- Iteration 1610: documented emoji presentation-selector Unicode-alias semantics.
+- Iteration 1611: recorded emoji presentation-selector Unicode-alias semantics.
+- Iteration 1612: added skin-tone plus ZWJ Unicode-pattern excluded-root coverage.
+- Iteration 1613: documented skin-tone plus ZWJ Unicode-alias semantics.
+- Iteration 1614: recorded skin-tone plus ZWJ Unicode-alias semantics.
+- Iteration 1615: added gendered emoji Unicode-pattern excluded-root coverage.
+- Iteration 1616: documented gendered emoji Unicode-alias semantics.
+- Iteration 1617: recorded gendered emoji Unicode-alias semantics.
+- Iteration 1618: added emoji hair-style Unicode-pattern excluded-root coverage.
+- Iteration 1619: documented emoji hair-style Unicode-alias semantics.
+- Iteration 1620: recorded emoji hair-style Unicode-alias semantics.
+- Iteration 1621: added emoji family/role Unicode-pattern excluded-root coverage.
+- Iteration 1622: documented emoji family/role Unicode-alias semantics.
+- Iteration 1623: recorded emoji family/role Unicode-alias semantics.
+- Iteration 1624: added emoji couple Unicode-pattern excluded-root coverage.
+- Iteration 1625: documented emoji couple Unicode-alias semantics.
+- Iteration 1626: recorded emoji couple Unicode-alias semantics.
+- Iteration 1627: added emoji family Unicode-pattern excluded-root coverage.
+- Iteration 1628: documented emoji family Unicode-alias semantics.
+- Iteration 1629: recorded emoji family Unicode-alias semantics.
+- Iteration 1630: added regional-indicator plus modifier Unicode-pattern excluded-root coverage.
+- Iteration 1631: documented regional-indicator plus modifier Unicode-alias semantics.
+- Iteration 1632: recorded regional-indicator plus modifier Unicode-alias semantics.
+- Iteration 1633: added emoji combining-mark Unicode-pattern excluded-root coverage.
+- Iteration 1634: documented emoji combining-mark Unicode-alias semantics.
+- Iteration 1635: recorded emoji combining-mark Unicode-alias semantics.
+- Iteration 1636: added emoji selector/modifier Unicode-pattern excluded-root coverage.
+- Iteration 1637: documented emoji selector/modifier Unicode-alias semantics.
+- Iteration 1638: recorded emoji selector/modifier Unicode-alias semantics.
+- Iteration 1639: added emoji tag Unicode-pattern excluded-root coverage.
+- Iteration 1640: documented emoji tag Unicode-alias semantics.
+- Iteration 1641: recorded emoji tag Unicode-alias semantics.
+- Iteration 1642: added digit-keycap Unicode-pattern excluded-root coverage.
+- Iteration 1643: documented digit-keycap Unicode-alias semantics.
+- Iteration 1644: recorded digit-keycap Unicode-alias semantics.
+- Iteration 1645: added enclosed-alphanumeric Unicode-pattern excluded-root coverage.
+- Iteration 1646: documented enclosed-alphanumeric Unicode-alias semantics.
+- Iteration 1647: recorded enclosed-alphanumeric Unicode-alias semantics.
+- Iteration 1648: added distinct double-circle Unicode-pattern excluded-root coverage.
+- Iteration 1649: documented double-circle Unicode-alias semantics.
+- Iteration 1650: recorded double-circle Unicode-alias semantics.
+- Iteration 1651: added double-arrow Unicode-pattern excluded-root coverage.
+- Iteration 1652: documented arrow-symbol Unicode-alias semantics.
+- Iteration 1653: recorded arrow-symbol Unicode-alias semantics.
+- Iteration 1654: added distinct black-diamond dingbat Unicode-pattern excluded-root coverage.
+- Iteration 1655: documented black-diamond dingbat Unicode-alias semantics.
+- Iteration 1656: recorded black-diamond dingbat Unicode-alias semantics.
+- Iteration 1657: added distinct G-clef supplementary-plane Unicode-pattern excluded-root coverage.
+- Iteration 1658: documented G-clef Unicode-alias semantics.
+- Iteration 1659: recorded G-clef Unicode-alias semantics.
+- Iteration 1660: added distinct snowman Unicode-pattern excluded-root coverage.
+- Iteration 1661: documented snowman Unicode-alias semantics.
+- Iteration 1662: recorded snowman Unicode-alias semantics.
+- Iteration 1663: added transport-symbol Unicode-pattern excluded-root coverage.
+- Iteration 1664: documented transport-symbol Unicode-alias semantics.
+- Iteration 1665: recorded transport-symbol Unicode-alias semantics.
+- Iteration 1666: added distinct compass map Unicode-pattern excluded-root coverage.
+- Iteration 1667: documented compass map Unicode-alias semantics.
+- Iteration 1668: recorded compass map Unicode-alias semantics.
+- Iteration 1669: added distinct Bitcoin-sign Unicode-pattern excluded-root coverage.
+- Iteration 1670: documented Bitcoin-sign Unicode-alias semantics.
+- Iteration 1671: recorded Bitcoin-sign Unicode-alias semantics.
+- Iteration 1672: added distinct prescription-sign Unicode-pattern excluded-root coverage.
+- Iteration 1673: documented prescription-sign Unicode-alias semantics.
+- Iteration 1674: recorded prescription-sign Unicode-alias semantics.
+- Iteration 1675: added distinct subscript-nine Unicode-pattern excluded-root coverage.
+- Iteration 1676: documented subscript-nine Unicode-alias semantics.
+- Iteration 1677: recorded subscript-nine Unicode-alias semantics.
+- Iteration 1678: added supplementary noncharacter coverage with filesystem-limit skip handling.
+- Iteration 1679: documented supplementary noncharacter semantics and filesystem limitation.
+- Iteration 1680: recorded supplementary noncharacter semantics and filesystem limitation.
+- Iteration 1681: added supplementary private-use coverage with filesystem-limit skip handling.
+- Iteration 1682: documented supplementary private-use semantics and filesystem limitation.
+- Iteration 1683: recorded supplementary private-use semantics and filesystem limitation.
+- Iteration 1684: added RLO bidirectional-control Unicode-pattern excluded-root coverage.
+- Iteration 1685: documented RLO bidirectional-control semantics.
+- Iteration 1686: recorded RLO bidirectional-control semantics.
+- Iteration 1687: added vertical-tab/form-feed Unicode-pattern excluded-root coverage.
+- Iteration 1688: documented vertical-tab/form-feed Unicode-alias semantics.
+- Iteration 1689: recorded vertical-tab/form-feed Unicode-alias semantics.
+- Iteration 1690: added zero-width-non-joiner Unicode-pattern excluded-root coverage.
+- Iteration 1691: documented zero-width-non-joiner Unicode-alias semantics.
+- Iteration 1692: recorded zero-width-non-joiner Unicode-alias semantics.
+- Iteration 1693: added distinct interrobang Unicode-pattern excluded-root coverage.
+- Iteration 1694: documented interrobang Unicode-alias semantics.
+- Iteration 1695: recorded interrobang Unicode-alias semantics.
+- Iteration 1696: added distinct supplementary mathematical-pi Unicode-pattern excluded-root coverage.
+- Iteration 1697: documented supplementary mathematical-pi Unicode-alias semantics.
+- Iteration 1698: recorded supplementary mathematical-pi Unicode-alias semantics.
+- Iteration 1699: added distinct eight-spoked decorative-star Unicode-pattern excluded-root coverage.
+- Iteration 1700: documented eight-spoked decorative-star Unicode-alias semantics.
+- Iteration 1701: recorded eight-spoked decorative-star Unicode-alias semantics.
+- Iteration 1702: added paired-circle/diamond Unicode-pattern excluded-root coverage.
+- Iteration 1703: documented paired-circle/diamond Unicode-alias semantics.
+- Iteration 1704: recorded paired-circle/diamond Unicode-alias semantics.
+- Iteration 1705: added gear-plus-variation-selector Unicode-pattern excluded-root coverage.
+- Iteration 1706: documented gear-plus-variation-selector Unicode-alias semantics.
+- Iteration 1707: recorded gear-plus-variation-selector Unicode-alias semantics.
+- Iteration 1708: added symbol-plus-combining-acute Unicode-pattern excluded-root coverage.
+- Iteration 1709: documented symbol-plus-combining-acute Unicode-alias semantics.
+- Iteration 1710: recorded symbol-plus-combining-acute Unicode-alias semantics.
+- Iteration 1711: added punctuation-plus-combining-acute Unicode-pattern excluded-root coverage.
+- Iteration 1712: documented punctuation-plus-combining-acute Unicode-alias semantics.
+- Iteration 1713: recorded punctuation-plus-combining-acute Unicode-alias semantics.
+- Iteration 1714: added currency-plus-combining-acute Unicode-pattern excluded-root coverage.
+- Iteration 1715: documented currency-plus-combining-acute Unicode-alias semantics.
+- Iteration 1716: recorded currency-plus-combining-acute Unicode-alias semantics.
+- Iteration 1717: added letterlike-symbol-plus-combining-acute Unicode-pattern excluded-root coverage.
+- Iteration 1718: documented letterlike-symbol-plus-combining-acute Unicode-alias semantics.
+- Iteration 1719: recorded letterlike-symbol-plus-combining-acute Unicode-alias semantics.
+- Iteration 1720: added shape-plus-variation-selector Unicode-pattern excluded-root coverage.
+- Iteration 1721: documented shape-plus-variation-selector Unicode-alias semantics.
+- Iteration 1722: recorded shape-plus-variation-selector Unicode-alias semantics.
+- Iteration 1723: added shape-plus-combining-mark-plus-selector Unicode-pattern excluded-root coverage.
+- Iteration 1724: documented shape-plus-combining-mark-plus-selector Unicode-alias semantics.
+- Iteration 1725: recorded shape-plus-combining-mark-plus-selector Unicode-alias semantics.
+- Iteration 1726: added symbol-plus-multiple-combining-marks Unicode-pattern excluded-root coverage.
+- Iteration 1727: documented symbol-plus-multiple-combining-marks Unicode-alias semantics.
+- Iteration 1728: recorded symbol-plus-multiple-combining-marks Unicode-alias semantics.
+- Iteration 1729: added selector-plus-multiple-combining-marks Unicode-pattern excluded-root coverage.
+- Iteration 1730: documented selector-plus-multiple-combining-marks Unicode-alias semantics.
+- Iteration 1731: recorded selector-plus-multiple-combining-marks Unicode-alias semantics.
+- Iteration 1732: added tag-plus-variation-selector Unicode-pattern excluded-root coverage.
+- Iteration 1733: documented tag-plus-variation-selector Unicode-alias semantics.
+- Iteration 1734: recorded tag-plus-variation-selector Unicode-alias semantics.
+- Iteration 1735: added flag-plus-tag Unicode-pattern excluded-root coverage.
+- Iteration 1736: documented flag-plus-tag Unicode-alias semantics.
+- Iteration 1737: recorded flag-plus-tag Unicode-alias semantics.
+- Iteration 1738: added couple-plus-variation-selector Unicode-pattern excluded-root coverage.
+- Iteration 1739: documented couple-plus-variation-selector Unicode-alias semantics.
+- Iteration 1740: recorded couple-plus-variation-selector Unicode-alias semantics.
+- Iteration 1741: added family-plus-variation-selector Unicode-pattern excluded-root coverage.
+- Iteration 1742: documented family-plus-variation-selector Unicode-alias semantics.
+- Iteration 1743: recorded family-plus-variation-selector Unicode-alias semantics.
+- Iteration 1744: added flag-plus-variation-selector Unicode-pattern excluded-root coverage.
+- Iteration 1745: documented flag-plus-variation-selector Unicode-alias semantics.
+- Iteration 1746: recorded flag-plus-variation-selector Unicode-alias semantics.
+- Iteration 1747: added modifier-plus-combining-acute Unicode-pattern excluded-root coverage.
+- Iteration 1748: documented modifier-plus-combining-acute Unicode-alias semantics.
+- Iteration 1749: recorded modifier-plus-combining-acute Unicode-alias semantics.
+- Iteration 1750: added ZWJ-plus-variation-selector Unicode-pattern excluded-root coverage.
+- Iteration 1751: documented ZWJ-plus-variation-selector Unicode-alias semantics.
+- Iteration 1752: recorded ZWJ-plus-variation-selector Unicode-alias semantics.
+- Iteration 1753: added ZWJ-plus-multiple-combining-marks Unicode-pattern excluded-root coverage.
+- Iteration 1754: documented ZWJ-plus-multiple-combining-marks Unicode-alias semantics.
+- Iteration 1755: recorded ZWJ-plus-multiple-combining-marks Unicode-alias semantics.
+- Iteration 1756: added modifier-plus-ZWJ-plus-combining-acute Unicode-pattern excluded-root coverage.
+- Iteration 1757: documented modifier-plus-ZWJ-plus-combining-acute Unicode-alias semantics.
+- Iteration 1758: recorded modifier-plus-ZWJ-plus-combining-acute Unicode-alias semantics.
+- Iteration 1759: added flag-plus-ZWJ Unicode-pattern excluded-root coverage.
+- Iteration 1760: documented flag-plus-ZWJ Unicode-alias semantics.
+- Iteration 1761: recorded flag-plus-ZWJ Unicode-alias semantics.
+- Iteration 1762: added ZWJ-plus-tag Unicode-pattern excluded-root coverage.
+- Iteration 1763: documented ZWJ-plus-tag Unicode-alias semantics.
+- Iteration 1764: recorded ZWJ-plus-tag Unicode-alias semantics.
+- Iteration 1765: added modifier-plus-tag Unicode-pattern excluded-root coverage.
+- Iteration 1766: documented modifier-plus-tag Unicode-alias semantics.
+- Iteration 1767: recorded modifier-plus-tag Unicode-alias semantics.
+- Iteration 1768: added family-plus-tag Unicode-pattern excluded-root coverage.
+- Iteration 1769: documented family-plus-tag Unicode-alias semantics.
+- Iteration 1770: recorded family-plus-tag Unicode-alias semantics.
+- Iteration 1771: added couple-plus-tag Unicode-pattern excluded-root coverage.
+- Iteration 1772: documented couple-plus-tag Unicode-alias semantics.
+- Iteration 1773: recorded couple-plus-tag Unicode-alias semantics.
+- Iteration 1774: added family-plus-ZWJ-plus-tag Unicode-pattern excluded-root coverage.
+- Iteration 1775: documented family-plus-ZWJ-plus-tag Unicode-alias semantics.
+- Iteration 1776: recorded family-plus-ZWJ-plus-tag Unicode-alias semantics.
+- Iteration 1777: added modifier-plus-ZWJ-plus-tag Unicode-pattern excluded-root coverage.
+- Iteration 1778: documented modifier-plus-ZWJ-plus-tag Unicode-alias semantics.
+- Iteration 1779: recorded modifier-plus-ZWJ-plus-tag Unicode-alias semantics.
+- Iteration 1780: added keycap-plus-combining-acute Unicode-pattern excluded-root coverage.
+- Iteration 1781: documented keycap-plus-combining-acute Unicode-alias semantics.
+- Iteration 1782: recorded keycap-plus-combining-acute Unicode-alias semantics.
+- Iteration 1783: added flag-plus-multiple-combining-marks Unicode-pattern excluded-root coverage.
+- Iteration 1784: documented flag-plus-multiple-combining-marks Unicode-alias semantics.
+- Iteration 1785: recorded flag-plus-multiple-combining-marks Unicode-alias semantics.
+- Iteration 1786: added tag-plus-multiple-combining-marks Unicode-pattern excluded-root coverage.
+- Iteration 1787: documented tag-plus-multiple-combining-marks Unicode-alias semantics.
+- Iteration 1788: recorded tag-plus-multiple-combining-marks Unicode-alias semantics.
+- Iteration 1789: added flag-plus-ZWJ-plus-combining-acute Unicode-pattern excluded-root coverage.
+- Iteration 1790: documented flag-plus-ZWJ-plus-combining-acute Unicode-alias semantics.
+- Iteration 1791: recorded flag-plus-ZWJ-plus-combining-acute Unicode-alias semantics.
+- Iteration 1792: added family-plus-multiple-combining-marks Unicode-pattern excluded-root coverage.
+- Iteration 1793: documented family-plus-multiple-combining-marks Unicode-alias semantics.
+- Iteration 1794: recorded family-plus-multiple-combining-marks Unicode-alias semantics.
+- Iteration 1795: added flag-plus-tag-plus-combining-marks Unicode-pattern excluded-root coverage.
+- Iteration 1796: documented flag-plus-tag-plus-combining-marks Unicode-alias semantics.
+- Iteration 1797: recorded flag-plus-tag-plus-combining-marks Unicode-alias semantics.
+- Iteration 1798: added flag-plus-ZWJ-plus-tag Unicode-pattern excluded-root coverage.
+- Iteration 1799: documented flag-plus-ZWJ-plus-tag Unicode-alias semantics.
+- Iteration 1800: recorded flag-plus-ZWJ-plus-tag Unicode-alias semantics.
+- Iteration 1801: added flag-plus-ZWJ-plus-multiple-combining-marks Unicode-pattern excluded-root coverage.
+- Iteration 1802: documented flag-plus-ZWJ-plus-multiple-combining-marks Unicode-alias semantics.
+- Iteration 1803: recorded flag-plus-ZWJ-plus-multiple-combining-marks Unicode-alias semantics.
+- Iteration 1804: added couple-plus-ZWJ-plus-variation-selector Unicode-pattern excluded-root coverage.
+- Iteration 1805: documented couple-plus-ZWJ-plus-variation-selector Unicode-alias semantics.
+- Iteration 1806: recorded couple-plus-ZWJ-plus-variation-selector Unicode-alias semantics.
+- Iteration 1807: added family-plus-ZWJ-plus-multiple-combining-marks-plus-selector Unicode-pattern excluded-root coverage.
+- Iteration 1808: documented family-plus-ZWJ-plus-multiple-combining-marks-plus-selector Unicode-alias semantics.
+- Iteration 1809: recorded family-plus-ZWJ-plus-multiple-combining-marks-plus-selector Unicode-alias semantics.
+- Iteration 1810: added family-plus-modifier-plus-ZWJ-plus-tag Unicode-pattern excluded-root coverage.
+- Iteration 1811: documented family-plus-modifier-plus-ZWJ-plus-tag Unicode-alias semantics.
+- Iteration 1812: recorded family-plus-modifier-plus-ZWJ-plus-tag Unicode-alias semantics.
+- Iteration 1813: added role-plus-tag Unicode-pattern excluded-root coverage.
+- Iteration 1814: documented role-plus-tag Unicode-alias semantics.
+- Iteration 1815: recorded role-plus-tag Unicode-alias semantics.
+- Iteration 1816: added role-plus-variation-selector Unicode-pattern excluded-root coverage.
+- Iteration 1817: documented role-plus-variation-selector Unicode-alias semantics.
+- Iteration 1818: recorded role-plus-variation-selector Unicode-alias semantics.
+- Iteration 1819: added role-plus-multiple-combining-marks Unicode-pattern excluded-root coverage.
+- Iteration 1820: documented role-plus-multiple-combining-marks Unicode-alias semantics.
+- Iteration 1821: recorded role-plus-multiple-combining-marks Unicode-alias semantics.
+- Iteration 1822: added role-plus-ZWJ-plus-variation-selector Unicode-pattern excluded-root coverage.
+- Iteration 1823: documented role-plus-ZWJ-plus-variation-selector Unicode-alias semantics.
+- Iteration 1824: recorded role-plus-ZWJ-plus-variation-selector Unicode-alias semantics.
+- Iteration 1825: added role-plus-modifier-plus-ZWJ-plus-multiple-combining-marks Unicode-pattern excluded-root coverage.
+- Iteration 1826: documented role-plus-modifier-plus-ZWJ-plus-multiple-combining-marks Unicode-alias semantics.
+- Iteration 1827: recorded role-plus-modifier-plus-ZWJ-plus-multiple-combining-marks Unicode-alias semantics.
+- Iteration 1828: added role-plus-modifier-plus-ZWJ-plus-variation-selector Unicode-pattern excluded-root coverage.
+- Iteration 1829: documented role-plus-modifier-plus-ZWJ-plus-variation-selector Unicode-alias semantics.
+- Iteration 1830: recorded role-plus-modifier-plus-ZWJ-plus-variation-selector Unicode-alias semantics.
+- Iteration 1831: added role-plus-modifier-plus-ZWJ-plus-multiple-combining-marks-plus-variation-selector Unicode-pattern excluded-root coverage.
+- Iteration 1832: documented role-plus-modifier-plus-ZWJ-plus-multiple-combining-marks-plus-variation-selector Unicode-alias semantics.
+- Iteration 1833: recorded role-plus-modifier-plus-ZWJ-plus-multiple-combining-marks-plus-variation-selector Unicode-alias semantics.
+- Iteration 1834: added role-plus-two-modifiers-plus-ZWJ Unicode-pattern excluded-root coverage.
+- Iteration 1835: documented role-plus-two-modifiers-plus-ZWJ Unicode-alias semantics.
+- Iteration 1836: recorded role-plus-two-modifiers-plus-ZWJ Unicode-alias semantics.
+- Iteration 1837: added role-plus-two-modifiers-plus-ZWJ-plus-variation-selector Unicode-pattern excluded-root coverage.
+- Iteration 1838: documented role-plus-two-modifiers-plus-ZWJ-plus-variation-selector Unicode-alias semantics.
+- Iteration 1839: recorded role-plus-two-modifiers-plus-ZWJ-plus-variation-selector Unicode-alias semantics.
+- Iteration 1840: added role-plus-two-modifiers-plus-ZWJ-plus-multiple-combining-marks Unicode-pattern excluded-root coverage.
+- Iteration 1841: documented role-plus-two-modifiers-plus-ZWJ-plus-multiple-combining-marks Unicode-alias semantics.
+- Iteration 1842: recorded role-plus-two-modifiers-plus-ZWJ-plus-multiple-combining-marks Unicode-alias semantics.
+- Iteration 1843: added role-plus-two-modifiers-plus-ZWJ-plus-combining-marks-plus-variation-selector Unicode-pattern excluded-root coverage.
+- Iteration 1844: documented role-plus-two-modifiers-plus-ZWJ-plus-combining-marks-plus-variation-selector Unicode-alias semantics.
+- Iteration 1845: recorded role-plus-two-modifiers-plus-ZWJ-plus-combining-marks-plus-variation-selector Unicode-alias semantics.
+- Iteration 1846: added role-plus-two-modifiers-plus-ZWJ-plus-tag Unicode-pattern excluded-root coverage.
+- Iteration 1847: documented role-plus-two-modifiers-plus-ZWJ-plus-tag Unicode-alias semantics.
+- Iteration 1848: recorded role-plus-two-modifiers-plus-ZWJ-plus-tag Unicode-alias semantics.
+- Iteration 1849: added role-plus-two-modifiers-plus-ZWJ-plus-multiple-tags Unicode-pattern excluded-root coverage.
+- Iteration 1850: documented role-plus-two-modifiers-plus-ZWJ-plus-multiple-tags Unicode-alias semantics.
+- Iteration 1851: recorded role-plus-two-modifiers-plus-ZWJ-plus-multiple-tags Unicode-alias semantics.
+- Iteration 1852: added role-plus-two-modifiers-plus-ZWJ-plus-combining-marks-plus-multiple-tags Unicode-pattern excluded-root coverage.
+- Iteration 1853: documented role-plus-two-modifiers-plus-ZWJ-plus-combining-marks-plus-multiple-tags Unicode-alias semantics.
+- Iteration 1854: recorded role-plus-two-modifiers-plus-ZWJ-plus-combining-marks-plus-multiple-tags Unicode-alias semantics.
+- Iteration 1855: added role-plus-two-modifiers-plus-ZWJ-plus-variation-selector-plus-tags Unicode-pattern excluded-root coverage.
+- Iteration 1856: documented role-plus-two-modifiers-plus-ZWJ-plus-variation-selector-plus-tags Unicode-alias semantics.
+- Iteration 1857: recorded role-plus-two-modifiers-plus-ZWJ-plus-variation-selector-plus-tags Unicode-alias semantics.
+- Iteration 1858: added role-plus-two-modifiers-plus-ZWJ-plus-combining-marks-plus-variation-selector-plus-tags Unicode-pattern excluded-root coverage.
+- Iteration 1861: added role-plus-two-modifiers-plus-ZWJ-plus-multiple-combining-marks-plus-variation-selector-plus-multiple-tags Unicode-pattern excluded-root coverage after resolving duplicate test naming.
+- Iteration 1862: verified the technical-review production checklist remains explicitly pending without Oxygen/Synology access.
+- Iteration 1863: verified the focused CLI/Oxygen regression gate after documenting pending production acceptance.
+- Iteration 1864: documented that migration `--limit` bounds processing after discovery and recommended `--path` for small trials.
+- Iteration 1859: documented role-plus-two-modifiers-plus-ZWJ-plus-combining-marks-plus-variation-selector-plus-tags Unicode-alias semantics.
+- Iteration 1860: recorded role-plus-two-modifiers-plus-ZWJ-plus-combining-marks-plus-variation-selector-plus-tags Unicode-alias semantics.
+- Iteration 979: documented external `.` path normalization.
+- Iteration 980: recorded external current-directory component coverage.
+- Iteration 981: added redundant-separator external-root coverage.
+- Iteration 982: documented redundant-separator external-root handling.
+- Iteration 983: recorded redundant-separator external-root coverage.
+- Iteration 984: added trailing-separator external-root coverage.
+- Iteration 985: documented trailing-separator external-root handling.
+- Iteration 986: recorded trailing-separator external-root coverage.
+- Iteration 355: documented strict remote hash-output validation.
+- Validation: `make review` (94 passed); Ruff, formatting, mypy, lock, and diff checks clean.
+
+## Next
+
+1. Run the isolated trial on a real Oxygen year subset.
+2. Validate Synology indexing, WebDAV, Pixette, ACLs, and xattrs.
+3. Record acceptance results in `TECHNICAL_REVIEW.md` before production migration.

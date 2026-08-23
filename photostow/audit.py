@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import posixpath
 import re
 import shlex
 import subprocess
@@ -8,7 +9,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from photostow.core import parse_sha_lines
-from photostow.remote import SSH, remote_sha256, ssh_stdout
+from photostow.remote import (
+    REMOTE_EXCLUDES,
+    SSH,
+    remote_path_beneath,
+    remote_sha256,
+    ssh_stdout,
+)
 
 
 @dataclass(frozen=True)
@@ -21,37 +28,60 @@ def known_paths(ledger_lines: list[str]) -> set[str]:
     return {path for _, path in parse_sha_lines(ledger_lines)}
 
 
-def unknown_files(remote_files: list[RemoteFile], ledger_lines: list[str]) -> list[RemoteFile]:
+def unknown_files(
+    remote_files: list[RemoteFile], ledger_lines: list[str]
+) -> list[RemoteFile]:
     known = known_paths(ledger_lines)
     return [file for file in remote_files if file.path not in known]
 
 
 def remote_files(host: str, root: str) -> list[RemoteFile]:
+    if not root or not root.strip():
+        raise ValueError("remote audit root must not be empty")
+    if "\0" in root:
+        raise ValueError("remote audit root must not contain NUL")
     root = root.rstrip("/") + "/"
     script = (
-        f"find {root!r} -path '*/@eaDir' -prune -o "
-        "-name 'photos-oxygen-sha*' -prune -o -type f -print0 "
-        "| xargs -0 stat -c '%s %n'"
+        f"find {shlex.quote(root)} {REMOTE_EXCLUDES}"
+        "-type f -exec stat -c '%s %n\\0' {} +"
     )
     out = ssh_stdout(host, script)
     files = []
-    for line in out.splitlines():
-        size, _, path = line.partition(" ")
+    for record in out.split("\0"):
+        if not record:
+            continue
+        size, separator, path = record.partition(" ")
+        if not separator or not path:
+            raise ValueError("remote audit stat record is malformed")
         if path:
-            files.append(RemoteFile(path=path, size=int(size)))
-    return files
+            if not size.isdigit():
+                raise ValueError(f"remote audit size is malformed: {size}")
+            if not remote_path_beneath(root, path):
+                raise ValueError(f"remote audit path escapes root: {path}")
+            files.append(RemoteFile(path=posixpath.normpath(path), size=int(size)))
+    unique: dict[str, RemoteFile] = {}
+    for file in files:
+        previous = unique.get(file.path)
+        if previous is not None and previous.size != file.size:
+            raise ValueError(f"conflicting audit sizes for path: {file.path}")
+        unique[file.path] = file
+    return list(unique.values())
 
 
 def human_bytes(n: int) -> str:
+    if n < 0:
+        raise ValueError("audit byte total must not be negative")
     value = float(n)
-    for unit in ["B", "KiB", "MiB", "GiB", "TiB"]:
-        if value < 1024 or unit == "TiB":
+    for unit in ["B", "KiB", "MiB", "GiB", "TiB", "PiB"]:
+        if value < 1024 or unit == "PiB":
             return f"{value:.1f} {unit}"
         value /= 1024
     raise AssertionError("unreachable")
 
 
 def time_range(bytes_total: int) -> str:
+    if bytes_total < 0:
+        raise ValueError("audit byte total must not be negative")
     low = bytes_total / (80 * 1024 * 1024)
     high = bytes_total / (20 * 1024 * 1024)
     return f"{low / 60:.1f}-{high / 60:.1f} minutes at 20-80 MiB/s"
@@ -72,7 +102,9 @@ def sort_duplicate_group(paths: list[str]) -> list[str]:
     return sorted(paths, key=preferred_path_key)
 
 
-def duplicate_groups(lines: list[str], current_paths: set[str] | None = None) -> list[list[str]]:
+def duplicate_groups(
+    lines: list[str], current_paths: set[str] | None = None
+) -> list[list[str]]:
     by_hash: dict[str, list[str]] = {}
     for digest, path in parse_sha_lines(lines):
         if current_paths is None or path in current_paths:
@@ -87,10 +119,38 @@ def remote_duplicate_groups(host: str, root: str, ledger: Path) -> list[list[str
 
 
 def parse_duplicate_group_file(path: Path) -> list[list[str]]:
-    text = path.read_text(encoding="utf-8").strip()
-    if not text:
+    if not path.is_file():
+        raise ValueError(f"duplicate report input is not a file: {path}")
+    if path.is_symlink():
+        raise ValueError(f"refusing symlink duplicate report input: {path}")
+    for parent in path.parents:
+        if parent.is_symlink():
+            raise ValueError(
+                f"refusing symlink duplicate report input parent: {parent}"
+            )
+    try:
+        text = path.read_bytes().decode("utf-8").rstrip("\n")
+    except UnicodeDecodeError as error:
+        raise ValueError("duplicate report is not valid UTF-8") from error
+    if not text or not text.strip():
         return []
-    return [group.splitlines() for group in text.split("\n\n")]
+    if "\r" in text:
+        raise ValueError("duplicate report path contains unsupported newline")
+    groups = [group.split("\n") for group in text.split("\n\n")]
+    seen_paths: set[str] = set()
+    for group in groups:
+        if any(not path.strip() for path in group):
+            raise ValueError("duplicate report path must not be empty")
+        if any("\0" in path for path in group):
+            raise ValueError("duplicate report path must not contain NUL")
+        if len(group) < 2:
+            raise ValueError("duplicate report group must have two paths")
+        if len(set(group)) != len(group):
+            raise ValueError("duplicate report group paths must be unique")
+        if seen_paths.intersection(group):
+            raise ValueError("duplicate report path appears in multiple groups")
+        seen_paths.update(group)
+    return groups
 
 
 def verify_duplicate(host: str, keep: str, duplicate: str) -> None:
@@ -105,7 +165,9 @@ def verify_duplicate(host: str, keep: str, duplicate: str) -> None:
     subprocess.run([*SSH, host, cmd], check=True)
 
 
-def delete_duplicate_groups(host: str, groups: list[list[str]], dry_run: bool = True) -> int:
+def delete_duplicate_groups(
+    host: str, groups: list[list[str]], dry_run: bool = True
+) -> int:
     processed = 0
     failures: list[tuple[str, str]] = []
     for group in groups:
@@ -118,10 +180,14 @@ def delete_duplicate_groups(host: str, groups: list[list[str]], dry_run: bool = 
                 failures.append((keep, duplicate))
                 continue
             if not dry_run:
-                subprocess.run([*SSH, host, f"rm -- {shlex.quote(duplicate)}"], check=True)
+                subprocess.run(
+                    [*SSH, host, f"rm -- {shlex.quote(duplicate)}"], check=True
+                )
             processed += 1
     if failures:
-        print(f"verification failed for {len(failures)} duplicate files:", file=sys.stderr)
+        print(
+            f"verification failed for {len(failures)} duplicate files:", file=sys.stderr
+        )
         for keep, duplicate in failures:
             print(f"  keep: {keep}\n  skip: {duplicate}", file=sys.stderr)
         raise SystemExit(1)
@@ -129,6 +195,31 @@ def delete_duplicate_groups(host: str, groups: list[list[str]], dry_run: bool = 
 
 
 def write_duplicate_groups(groups: list[list[str]], output: Path) -> None:
+    if output.is_symlink():
+        raise ValueError(f"refusing symlink duplicate report: {output}")
+    if output.exists() and not output.is_file():
+        raise ValueError(f"duplicate report destination is not a file: {output}")
+    for parent in output.parents:
+        if parent.is_symlink():
+            raise ValueError(f"refusing symlink duplicate report parent: {parent}")
+    if not output.parent.is_dir():
+        raise ValueError(f"duplicate report parent is not a directory: {output.parent}")
+    seen_paths: set[str] = set()
+    for group in groups:
+        if len(group) < 2:
+            raise ValueError("duplicate report group must have two paths")
+        if len(set(group)) != len(group):
+            raise ValueError("duplicate report group paths must be unique")
+        if seen_paths.intersection(group):
+            raise ValueError("duplicate report path appears in multiple groups")
+        seen_paths.update(group)
+        for path in group:
+            if not path or not path.strip():
+                raise ValueError("duplicate report path must not be empty")
+            if "\0" in path:
+                raise ValueError("duplicate report path must not contain NUL")
+            if "\n" in path or "\r" in path:
+                raise ValueError("duplicate report path contains unsupported newline")
     output.write_text(
         "\n\n".join("\n".join(group) for group in groups) + ("\n" if groups else ""),
         encoding="utf-8",

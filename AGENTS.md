@@ -32,13 +32,13 @@ The photo archive is large. Avoid broad commands unless needed:
 
 ## Ledger safety
 
-`photos-oxygen-sha` is the archive truth. After copying reviewed files, use:
+`photos-oxygen-sha` is the archive truth. After reviewing files, use the combined workflow:
 
 ```sh
 make archive-reviewed
 ```
 
-rather than `make copy-reviewed-to-oxygen`, so the ledger is updated and installed back on oxygen.
+so the ledger is updated and installed back on oxygen.
 
 Remote ledger installs rotate compressed backups:
 

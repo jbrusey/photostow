@@ -32,6 +32,7 @@ from photostow.remote import (
     relative_paths,
     stage_by_year,
     update_remote_ledger,
+    validate_source_paths,
 )
 
 
@@ -85,7 +86,9 @@ def cmd_library_missing(args: argparse.Namespace) -> int:
         print(f"{digest}\t{created}\t{int(asset.has_adjustments)}\t{asset.path}")
     earliest = earliest_created([asset for _, asset in missing])
     if earliest:
-        print(f"earliest missing creation date: {earliest.isoformat()}", file=sys.stderr)
+        print(
+            f"earliest missing creation date: {earliest.isoformat()}", file=sys.stderr
+        )
     return 0
 
 
@@ -101,7 +104,9 @@ def cmd_copy_missing(args: argparse.Namespace) -> int:
         )
     else:
         paths = paths_from_missing_tsv(Path(args.missing_tsv))
-        rels = relative_paths(paths, Path(args.source_root))
+        source_root = Path(args.source_root)
+        rels = relative_paths(paths, source_root)
+        validate_source_paths(rels, source_root)
         if args.dry_run:
             for rel in rels:
                 print(rel)
@@ -167,14 +172,22 @@ def cmd_audit_new_remote(args: argparse.Namespace) -> int:
 
 
 def cmd_install_remote_ledger(args: argparse.Namespace) -> int:
-    install_remote_ledger(args.host, Path(args.local_ledger), args.remote_ledger, args.keep)
-    print(f"installed {args.local_ledger} to {args.host}:{args.remote_ledger}", file=sys.stderr)
+    install_remote_ledger(
+        args.host, Path(args.local_ledger), args.remote_ledger, args.keep
+    )
+    print(
+        f"installed {args.local_ledger} to {args.host}:{args.remote_ledger}",
+        file=sys.stderr,
+    )
     return 0
 
 
 def cmd_prune_remote_ledger(args: argparse.Namespace) -> int:
     before, after = prune_remote_ledger(
-        args.host, args.root, Path(args.ledger), Path(args.output) if args.output else None
+        args.host,
+        args.root,
+        Path(args.ledger),
+        Path(args.output) if args.output else None,
     )
     print(f"pruned ledger rows {before} -> {after}", file=sys.stderr)
     return 0
@@ -182,7 +195,10 @@ def cmd_prune_remote_ledger(args: argparse.Namespace) -> int:
 
 def cmd_update_remote_ledger(args: argparse.Namespace) -> int:
     count = update_remote_ledger(
-        args.host, args.root, Path(args.ledger), Path(args.output) if args.output else None
+        args.host,
+        args.root,
+        Path(args.ledger),
+        Path(args.output) if args.output else None,
     )
     print(f"hashed {count} new remote files", file=sys.stderr)
     return 0
@@ -203,12 +219,16 @@ def build_parser() -> argparse.ArgumentParser:
     hash_parser.add_argument("root")
     hash_parser.set_defaults(func=cmd_hash)
 
-    missing_parser = sub.add_parser("missing", help="list source hashes absent from archive")
+    missing_parser = sub.add_parser(
+        "missing", help="list source hashes absent from archive"
+    )
     missing_parser.add_argument("source_hashes")
     missing_parser.add_argument("archive_hashes")
     missing_parser.set_defaults(func=cmd_missing)
 
-    inspect_parser = sub.add_parser("inspect-library", help="list Photos library assets")
+    inspect_parser = sub.add_parser(
+        "inspect-library", help="list Photos library assets"
+    )
     inspect_parser.add_argument("library")
     inspect_parser.set_defaults(func=cmd_inspect_library)
 
@@ -235,7 +255,8 @@ def build_parser() -> argparse.ArgumentParser:
     update_parser.set_defaults(func=cmd_update_remote_ledger)
 
     prune_parser = sub.add_parser(
-        "prune-remote-ledger", help="remove ledger rows for remote paths that no longer exist"
+        "prune-remote-ledger",
+        help="remove ledger rows for remote paths that no longer exist",
     )
     prune_parser.add_argument("host")
     prune_parser.add_argument("root")
@@ -263,7 +284,8 @@ def build_parser() -> argparse.ArgumentParser:
     audit_parser.set_defaults(func=cmd_audit_new_remote)
 
     dup_parser = sub.add_parser(
-        "duplicate-groups", help="report current remote duplicate groups from ledger hashes"
+        "duplicate-groups",
+        help="report current remote duplicate groups from ledger hashes",
     )
     dup_parser.add_argument("host")
     dup_parser.add_argument("root")
@@ -297,7 +319,10 @@ def build_parser() -> argparse.ArgumentParser:
     review_parser.add_argument("--replace", action="store_true")
     review_parser.set_defaults(func=cmd_stage_review)
 
-    copy_tree_parser = sub.add_parser("copy-tree", help="copy a reviewed tree to remote")
+    copy_tree_parser = sub.add_parser(
+        "copy-tree",
+        help="copy a reviewed tree only; prefer make archive-reviewed",
+    )
     copy_tree_parser.add_argument("review_dir")
     copy_tree_parser.add_argument("host")
     copy_tree_parser.add_argument("dest_root")
@@ -310,7 +335,11 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     signal.signal(signal.SIGPIPE, signal.SIG_DFL)
     args = build_parser().parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except (OSError, ValueError) as error:
+        print(f"photostow failed: {error}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
