@@ -32,7 +32,11 @@ def main() -> int:
     parser.add_argument("--exclude", action="append", default=[])
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
-    apply_manifest = Path(args.apply) if isinstance(args.apply, str) else None
+    apply_manifest = (
+        Path(args.apply).parent.resolve() / Path(args.apply).name
+        if isinstance(args.apply, str)
+        else None
+    )
     if args.apply and args.dry_run:
         parser.error("--apply and --dry-run cannot be combined")
     if args.target is None and not apply_manifest:
