@@ -23,3 +23,5 @@ oxygen-*.sha256
 oxygen-*.log
 photos-oxygen-sha.before-*
 duplicate-groups*.txt
+loop-session-restart
+pi-session-*.html

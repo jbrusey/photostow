@@ -130,15 +130,17 @@ oxygen-migrate 2006 --dry-run --limit 10 --exclude 'incoming-*' \
 oxygen-migrate --apply trial.json
 oxygen-ingest incoming.jpg /var/services/photo/2025/incoming.jpg \
   --root /var/services/photo
-oxygen-verify /var/services/photo/.objects --limit 10 --verbose
-oxygen-gc /var/services/photo/.objects
+oxygen-verify /volume1/photostow --limit 10 --verbose
+oxygen-gc /volume1/photostow
 ```
 
 A positional migration target is relative to `/var/services/photo`; `--path`
 adds a file or subtree beneath that target. For another archive, use the
 explicit form `oxygen-migrate --root /archive 2006 --path photo.jpg`.
 
-Use `--object-root` when the object store is elsewhere on the same filesystem.
+The default object store is `/volume1/photostow` for the canonical archive
+`/var/services/photo`. Use `--object-root` to choose another location on the same
+filesystem; local non-canonical roots keep their `.objects` store by default.
 For a custom object-root name, pass the archive root to GC as well:
 `oxygen-gc /archive-objects --root /var/services/photo`.
 Migration hashes serially (`--jobs 1`) and lowers CPU priority by default;

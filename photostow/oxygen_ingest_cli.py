@@ -5,7 +5,7 @@ import sys
 import time
 from pathlib import Path
 
-from photostow.oxygen import ingest
+from photostow.oxygen import default_object_root, ingest
 
 
 def main() -> int:
@@ -24,7 +24,7 @@ def main() -> int:
     print(
         f"oxygen-ingest mode=apply root={args.root.resolve()} "
         f"source={args.source.resolve()} destination={destination} "
-        f"object-root={(args.object_root or args.root / '.objects').resolve()}",
+        f"object-root={(args.object_root or default_object_root(args.root)).resolve()}",
         flush=True,
     )
     try:

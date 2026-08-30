@@ -8,7 +8,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from photostow.oxygen import migrate
+from photostow.oxygen import default_object_root, migrate
 
 DEFAULT_ROOT = Path("/var/services/photo")
 
@@ -82,7 +82,7 @@ def main() -> int:
         f"root={root.resolve()} "
         f"target={args.target or '.'} path={args.path or '.'} "
         f"limit={args.limit if args.limit is not None else 'all'} "
-        f"object-root={(args.object_root or manifest_object_root or root / '.objects').resolve()}",
+        f"object-root={(args.object_root or manifest_object_root or default_object_root(root)).resolve()}",
         flush=True,
     )
     if apply_manifest:

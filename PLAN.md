@@ -17,7 +17,7 @@ The object store uses this layout:
 <object-root>/sha256/ab/cdef...
 ```
 
-`<object-root>` may be `/var/services/photo/.objects`, but it need not be inside
+The default production `<object-root>` is `/volume1/photostow`; it need not be inside
 the photo share. A location elsewhere on the same filesystem may better avoid
 Synology Photos/media-indexing and `@eaDir` activity. Resolve
 `/var/services/photo` on Oxygen and test both placement and indexing behavior
@@ -55,7 +55,7 @@ introduced and tested.
    unreadable paths.
 2. Select files deterministically in sorted path order.
 3. Hash selected files and map each digest to
-   `<object-root>/sha256/ab/cdef...`.
+   `<object-root>/sha256/ab/cdef...`, by default `/volume1/photostow/sha256/ab/cdef...`.
 4. Create the object hardlink if absent.
 5. Replace duplicate visible physical copies with hardlinks to that object.
 6. Leave names, visible paths, and year directories unchanged.

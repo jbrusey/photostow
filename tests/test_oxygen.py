@@ -4547,7 +4547,7 @@ def test_migrate_cli_uses_default_root(
     assert f"root={Path('/var/services/photo').resolve()}" in output
     assert captured.err.startswith("would migrate 0 files elapsed=")
     assert "rate=0.00/s" in captured.err
-    assert f"object-root={Path('/var/services/photo/.objects').resolve()}" in output
+    assert f"object-root={Path('/volume1/photostow').resolve()}" in output
 
 
 def test_migrate_cli_supports_root_override(

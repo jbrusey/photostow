@@ -14,6 +14,18 @@ from pathlib import Path
 
 from photostow.core import sha256_file
 
+DEFAULT_ARCHIVE_ROOT = Path("/var/services/photo")
+DEFAULT_OBJECT_ROOT = Path("/volume1/photostow")
+
+
+def default_object_root(root: Path) -> Path:
+    """Use the production store by default; keep arbitrary local roots self-contained."""
+    return (
+        DEFAULT_OBJECT_ROOT
+        if root.absolute() == DEFAULT_ARCHIVE_ROOT
+        else root / ".objects"
+    )
+
 
 def visible_files(
     root: Path,
@@ -120,7 +132,9 @@ def visible_files(
 
 
 def object_path(root: Path, digest: str, object_root: Path | None = None) -> Path:
-    return (object_root or root / ".objects") / "sha256" / digest[:2] / digest[2:]
+    return (
+        (object_root or default_object_root(root)) / "sha256" / digest[:2] / digest[2:]
+    )
 
 
 def _device(path: Path) -> int:
@@ -365,7 +379,7 @@ def _ingest_locked(
         raise ValueError("source must be a regular file")
     if root not in destination.parents:
         raise ValueError("destination must be beneath root")
-    object_root = object_root or root / ".objects"
+    object_root = object_root or default_object_root(root)
     _check_same_filesystem(root, object_root)
     object_root = object_root.resolve()
     digest, _ = _stable_digest(source)
@@ -619,7 +633,7 @@ def _migrate_locked(
             except (OSError, ValueError, TypeError, KeyError) as error:
                 errors.append(f"{path}: {error}")
     else:
-        object_root = object_root or root / ".objects"
+        object_root = object_root or default_object_root(root)
         _check_same_filesystem(root, object_root)
         object_root = object_root.resolve()
         discovery_exclude = exclude + ((manifest.name,) if manifest else ())
