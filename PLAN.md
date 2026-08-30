@@ -32,7 +32,7 @@ separate-permission guarantee, because hardlinks share an inode and permissions.
 
 Commands beginning with `oxygen-` run on Oxygen and use local filesystem
 operations. They must not require SSH, `uv`, or third-party Python packages.
-The current Synology has Python 3.8, so the Oxygen entry points must remain
+Oxygen has Python 3.9.14 installed, so the Oxygen entry points must remain
 compatible with that runtime.
 
 Planned commands:
@@ -292,6 +292,20 @@ added later, but object content and visible hardlinks are authoritative.
 Migration and ingest are separate from the existing laptop review/copy flow.
 Do not replace the working ledger workflow wholesale until a representative
 subset has been migrated, verified, and tested through Pixette/WebDAV.
+
+Once that acceptance is complete:
+
+1. Remove the Makefile targets and CLI/library code for updating, pruning, and
+   installing `photos-oxygen-sha`.
+2. Remove `audit-new-remote` and `scripts/oxygen-new-hash-audit.sh`; migration
+   manifests and bounded progress replace their new-path audit.
+3. Remove ledger-based duplicate reporting and deletion; migration deduplicates
+   content as hardlinks while preserving visible paths.
+4. Update README, tests, and operational instructions to use the object store
+   and any future provenance catalogue instead of the ledger.
+
+Until then, retain all three legacy workflows for rollback, laptop
+`library-missing`, and comparison of migrated versus unmigrated files.
 
 ## Implementation order
 

@@ -49,7 +49,7 @@ For a representative year, review the dry-run manifest before applying it:
 oxygen-migrate 2006 --dry-run --limit 10 --manifest trial.json
 # inspect/delete or reject trial.json as appropriate
 oxygen-migrate --apply trial.json
-oxygen-verify /var/services/photo/.objects --verbose
+oxygen-verify /volume1/photostow --verbose
 ```
 
 - [x] Run a small real-year migration and rerun `oxygen-verify`.

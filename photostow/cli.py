@@ -14,7 +14,6 @@ from photostow.audit import (
     write_duplicate_groups,
 )
 from photostow.core import hash_tree, missing_hash_records, parse_sha_lines
-from photostow.oxygen import migrate
 from photostow.photos import (
     earliest_created,
     iter_assets,
@@ -34,13 +33,6 @@ from photostow.remote import (
     update_remote_ledger,
     validate_source_paths,
 )
-
-
-def cmd_oxygen_migrate(args: argparse.Namespace) -> int:
-    count = migrate(Path(args.root), dry_run=not args.apply)
-    action = "would migrate" if not args.apply else "migrated"
-    print(f"{action} {count} files", file=sys.stderr)
-    return 0
 
 
 def cmd_hash(args: argparse.Namespace) -> int:
@@ -207,13 +199,6 @@ def cmd_update_remote_ledger(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="photostow")
     sub = parser.add_subparsers(required=True)
-
-    migrate_parser = sub.add_parser(
-        "oxygen-migrate", help="build the remote content-addressed object store"
-    )
-    migrate_parser.add_argument("root")
-    migrate_parser.add_argument("--apply", action="store_true")
-    migrate_parser.set_defaults(func=cmd_oxygen_migrate)
 
     hash_parser = sub.add_parser("hash", help="hash all files under a directory")
     hash_parser.add_argument("root")

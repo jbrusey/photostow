@@ -4540,7 +4540,7 @@ def test_migrate_cli_uses_default_root(
 
     assert migrate_main() == 0
     assert calls[0][0] == Path("/var/services/photo")
-    assert calls[0][1]["selected"] == Path("/var/services/photo/2006")
+    assert calls[0][1]["selected"] == Path("/var/services/photo/2006").resolve()
     captured = capsys.readouterr()
     output = captured.out
     assert output.startswith("oxygen-migrate mode=dry-run")
@@ -4701,7 +4701,9 @@ def test_migrate_cli_composes_target_and_path(
 
     monkeypatch.setattr("photostow.oxygen_cli.migrate", fake_migrate)
     assert migrate_main() == 0
-    assert calls[0][1]["selected"] == Path("/var/services/photo/2006/photo.jpg")
+    assert (
+        calls[0][1]["selected"] == Path("/var/services/photo/2006/photo.jpg").resolve()
+    )
 
 
 def test_migrate_cli_passes_exclusions_in_order(

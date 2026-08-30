@@ -16,12 +16,30 @@ Photos library ──make missing──> missing.tsv ──make stage-review─�
 
 ## Setup
 
+Development uses `uv` and installs the optional `dev` tools:
+
 ```sh
-uv sync
+uv sync --extra dev
 make check
 # Full technical gate, including lock and diff checks:
 make review
 ```
+
+Oxygen only needs the package and its standard-library runtime. After pulling
+the repository on Oxygen, install it without the development extra:
+
+```sh
+git pull --ff-only
+python3 --version  # 3.9.14
+python3 -m pip install --user -e .
+oxygen-migrate --help
+oxygen-ingest --help
+oxygen-verify --help
+oxygen-gc --help
+```
+
+Do not run `uv` or install the `dev` extra on Oxygen. If a user-installed
+command is not found, add Python's user script directory to `PATH`.
 
 Defaults assume:
 
@@ -121,7 +139,7 @@ The Makefile wraps the CLI. For custom paths, use `uv run photostow --help` and 
 
 ## Content-addressed Oxygen commands
 
-These commands run locally on Oxygen with Python 3.8. Migration defaults to
+These commands run locally on Oxygen with Python 3.9.14. Migration defaults to
 dry-run; ingest applies changes, while verify and GC are report-only:
 
 ```sh

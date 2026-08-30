@@ -69,6 +69,7 @@ def main() -> int:
         if manifest_root and not args.root_override
         else args.root_override or DEFAULT_ROOT
     )
+    resolved_root = root.resolve()
     started_monotonic = time.monotonic()
     if args.nice:
         try:
@@ -88,11 +89,11 @@ def main() -> int:
     if apply_manifest:
         selected = None
     elif args.target and args.path:
-        selected = root / args.target / args.path
+        selected = resolved_root / args.target / args.path
     elif args.path:
-        selected = root / args.path
+        selected = resolved_root / args.path
     elif args.target:
-        selected = root / args.target
+        selected = resolved_root / args.target
     else:
         selected = None
     try:
