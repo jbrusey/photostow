@@ -22,7 +22,7 @@ def default_object_root(root: Path) -> Path:
     """Use the production store by default; keep arbitrary local roots self-contained."""
     return (
         DEFAULT_OBJECT_ROOT
-        if root.absolute() == DEFAULT_ARCHIVE_ROOT
+        if root.resolve() == DEFAULT_ARCHIVE_ROOT.resolve()
         else root / ".objects"
     )
 
@@ -84,6 +84,7 @@ def visible_files(
     if selected.is_file():
         if (
             selected.is_symlink()
+            or selected.name.startswith(".afpDeleted")
             or selected.name in {".DS_Store", ".photostow.lock"}
             or any(fnmatch.fnmatch(selected.name, pattern) for pattern in exclude)
         ):
@@ -91,7 +92,7 @@ def visible_files(
         if selected.name.startswith("photos-oxygen-sha"):
             return []
         return [selected]
-    if selected.name in {"@eaDir", ".objects"} or any(
+    if selected.name in {"@eaDir", ".objects", "._DAV"} or any(
         fnmatch.fnmatch(selected.name, pattern) for pattern in exclude
     ):
         return []
@@ -109,7 +110,7 @@ def visible_files(
         dirs[:] = [
             name
             for name in dirs
-            if name not in {"@eaDir", ".objects"}
+            if name not in {"@eaDir", ".objects", "._DAV"}
             and not (
                 excluded_root and (Path(directory) / name).resolve() == excluded_root
             )
@@ -125,6 +126,7 @@ def visible_files(
         for path in files
         if (
             not path.name.startswith("photos-oxygen-sha")
+            and not path.name.startswith(".afpDeleted")
             and path.name not in {".DS_Store", ".photostow.lock"}
             and not path.is_symlink()
         )

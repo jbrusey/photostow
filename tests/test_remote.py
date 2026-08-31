@@ -151,6 +151,8 @@ def test_remote_scanner_exclusions_are_centralized() -> None:
     assert remote.REMOTE_EXCLUDES == (
         "-path '*/@eaDir' -prune -o "
         "-path '*/.objects' -prune -o "
+        "-path '*/._DAV' -prune -o "
+        "-name '.afpDeleted*' -prune -o "
         "-name 'photos-oxygen-sha*' -prune -o "
     )
 

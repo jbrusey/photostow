@@ -77,8 +77,11 @@ def test_visible_files_is_sorted_and_excludes_metadata(tmp_path: Path) -> None:
     (tmp_path / "b.jpg").write_bytes(b"b")
     (tmp_path / "a.jpg").write_bytes(b"a")
     (tmp_path / ".DS_Store").write_bytes(b"x")
+    (tmp_path / ".afpDeleted3500075").write_bytes(b"x")
     (tmp_path / "@eaDir").mkdir()
     (tmp_path / "@eaDir" / "indexed.jpg").write_bytes(b"x")
+    (tmp_path / "._DAV").mkdir()
+    (tmp_path / "._DAV" / "metadata").write_bytes(b"x")
     (tmp_path / ".objects").mkdir()
     (tmp_path / ".photostow.lock").write_text("", encoding="utf-8")
     (tmp_path / "photos-oxygen-sha").write_bytes(b"ledger")
@@ -86,12 +89,15 @@ def test_visible_files_is_sorted_and_excludes_metadata(tmp_path: Path) -> None:
     nested = tmp_path / "nested"
     nested.mkdir()
     (nested / ".DS_Store").write_bytes(b"x")
+    (nested / ".afpDeleted3500076").write_bytes(b"x")
     (nested / ".photostow.lock").write_bytes(b"x")
     (nested / "photos-oxygen-sha.1.gz").write_bytes(b"x")
     (nested / ".objects").mkdir()
     (nested / ".objects" / "object").write_bytes(b"x")
     (nested / "@eaDir").mkdir()
     (nested / "@eaDir" / "indexed.jpg").write_bytes(b"x")
+    (nested / "._DAV").mkdir()
+    (nested / "._DAV" / "metadata").write_bytes(b"x")
 
     assert [path.name for path in visible_files(tmp_path)] == ["a.jpg", "b.jpg"]
     assert [path.name for path in visible_files(tmp_path, exclude=("",))] == [

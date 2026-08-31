@@ -5,23 +5,23 @@
 Maintain the Synology photo archive as a content-addressed store while keeping the
 existing year/filename tree as the user-facing and Pixette-indexed view.
 
-The archive root is:
+The **Archive Root** is:
 
 ```text
 /var/services/photo
 ```
 
-The object store uses this layout:
+The **Object Store** uses this layout:
 
 ```text
-<object-root>/sha256/ab/cdef...
+<Object Store>/sha256/ab/cdef...
 ```
 
-The default production `<object-root>` is `/volume1/photostow`; it need not be inside
-the photo share. A location elsewhere on the same filesystem may better avoid
-Synology Photos/media-indexing and `@eaDir` activity. Resolve
-`/var/services/photo` on Oxygen and test both placement and indexing behavior
-before choosing the production location.
+The default production Object Store is `/volume1/photostow`; it need not be
+inside the photo share. A location elsewhere on the same filesystem may better
+avoid Synology Photos/media-indexing and `@eaDir` activity. Resolve the Archive
+Root on Oxygen and test both placement and indexing behavior before choosing the
+production location.
 
 Each visible photo is a hardlink to its content object. SHA-256 is the identity;
 filenames, dates, and directory names are not identity. Object contents must not
@@ -38,8 +38,8 @@ compatible with that runtime.
 Planned commands:
 
 ```text
-oxygen-migrate   existing visible tree -> object store
-oxygen-ingest    incoming files -> object store and visible tree
+oxygen-migrate   existing visible tree -> Object Store
+oxygen-ingest    incoming files -> Object Store and visible tree
 oxygen-verify    check object names and contents
 oxygen-gc        optionally remove unreferenced objects
 ```
@@ -49,158 +49,170 @@ introduced and tested.
 
 ## Migration
 
-`oxygen-migrate` processes an existing directory such as `2006`:
+### End state
 
-1. Exclude the object store, `@eaDir`, ledgers, `.DS_Store`, symlinks, and
-   unreadable paths.
-2. Select files deterministically in sorted path order.
-3. Hash selected files and map each digest to
-   `<object-root>/sha256/ab/cdef...`, by default `/volume1/photostow/sha256/ab/cdef...`.
-4. Create the object hardlink if absent.
-5. Replace duplicate visible physical copies with hardlinks to that object.
-6. Leave names, visible paths, and year directories unchanged.
-7. Remain idempotent.
+The end state is:
 
-The object store must be on the same filesystem as the visible tree. The
-migration should check this before making changes.
+- The Object Store contains one immutable content object per SHA-256, stored
+  as `sha256/ab/cdef...`.
+- The Archive Root retains the existing visible names and directories, with
+  each migrated file represented by a hardlink to its object.
+- There must not be multiple visible hardlink references to the same content.
+  The object link plus its one intended visible reference is required; two or
+  more visible files referencing one object is an error.
 
-### Safe, observable operation
+The Object Store must be on the same filesystem as the Archive Root. Migration
+must check this before making changes.
 
-Dry-run is the default and must be useful on a large archive. It must:
+### One-file-at-a-time migration
 
-- Print a startup line before scanning.
-- Print discovery and hashing progress periodically, including files processed,
-  elapsed time, and the current path.
-- Flush progress output so an SSH session shows activity.
-- Report a final summary even when no files are selected.
-- Never hash the whole archive before producing the first progress output.
+The normal migration is a streaming apply, not a full dry-run followed by a
+manifest apply. It processes files independently and reports each completed
+file:
 
-Migration must support small, repeatable experiments:
+1. Walk the selected visible tree in deterministic order, excluding
+   the Object Store, `@eaDir`, `._DAV`, `.afpDeleted*`, ledgers, `.DS_Store`,
+   symlinks, and unreadable paths.
+2. Open the file without following symlinks, hash it once, and confirm its
+   device, inode, size, and modification time remain stable.
+3. Derive the Object Store path `sha256/ab/cdef...` from the digest.
+4. If the object exists and is the same inode as the source, treat the source
+   as already migrated and skip it when the inode link count is exactly `2`:
+   one object-store link plus one visible link. An inode link count of `3` or
+   more is an error because it means the object has multiple references; add it
+   to the fail list.
+5. If the object does not exist and the source inode link count is `2` or more,
+   treat it as an error and add it to the fail list. The other link may be a
+   second visible file or an external reference, and migration must not guess.
+   If the object exists but is a different inode, likewise do not create another
+   visible reference; add the source to the fail list.
+6. If the object path already exists for a different inode, do not rename or
+   link the source. Add the source to a durable fail list for review or later
+   deletion.
+7. If the object path is absent and the source has one link, atomically rename
+   the source into the object shard and create one hardlink at its original
+   visible path. The rename and link must preserve the source inode and
+   timestamps.
+8. Continue only after the file operation succeeds. An unexpected condition
+   fails the run with a nonzero status and a clear path-specific error.
 
-```sh
-oxygen-migrate 2006 --dry-run --limit 10 --manifest trial.json
-oxygen-migrate 2006 --dry-run --path IMG_1234.JPG --manifest trial.json
-oxygen-migrate 2006 --dry-run --path 08/15 --manifest trial.json
-oxygen-migrate --root /some/test/archive 2006 --dry-run --manifest trial.json
-```
+Each completed file is a committed, idempotent unit. An interrupted run can be
+rerun without a manifest and without damaging completed files. `--path`,
+`--limit`, `--exclude`, `--nice`, bounded progress, and serial processing remain
+available. The process must not load the complete file list or hash list before
+starting work.
 
-`/var/services/photo` is the default root. `--root` is an explicit override for
-testing or another deliberately selected archive; positional targets must remain
-beneath the resolved root.
+A dry-run may remain as an optional preview for a small selection, but the
+manifest-producing and manifest-authoritative apply workflow is not the normal
+migration path and should be removed if it is not needed after the streaming
+path is proven.
 
-Required selection options:
+### Failure list and safety
 
-- `--limit N`: process at most N files after deterministic selection.
-- `--path PATH`: restrict processing to a path or subtree under the root.
-- `--exclude PATTERN`: repeatable exclusion for an additional subtree/pattern.
+The fail list must include at least the source path, digest when known, object
+path, reason, and timestamp. It must be append-safe and reviewable without
+being mistaken for a successful migration record.
 
-The dry-run manifest records the reviewed selection, relative paths, digests,
-device/inode identities, sizes, and relevant timestamps. Apply consumes that
-manifest as its authoritative input rather than repeating selection options or
-performing a new selection:
+If the digest-derived object already exists, migration must never overwrite it,
+rename the source over it, or create another visible hardlink. The existing
+object can be reviewed separately; the source can later be deleted only after
+an explicit comparison and decision.
 
-```sh
-oxygen-migrate --apply trial.json
-```
+Unexpected errors, unstable files, missing files, directory errors, hardlink
+failures, cross-filesystem stores, malformed object paths, and unsafe symlink
+conditions must fail closed. A completed prior file remains valid, but the run
+must stop rather than continue past an unexpected condition.
 
-Apply refuses entries that have changed or no longer resolve beneath the
-recorded root.
+Only one Oxygen migration/ingest/GC operation may run at a time. Every publish
+must create the object first or rename the source atomically, then create the
+visible hardlink. No visible path may point to a partial object. The selected
+tree must not be written by Pixette or users during migration.
 
-### Resource limits
+### Metadata and timestamps
 
-The default migration must be conservative because Oxygen is also serving
-Photos:
-
-- Hash serially by default (`--jobs 1`); do not start one process per CPU.
-- Support `--jobs N` only when explicitly requested.
-- Support `--nice N`, defaulting to a lower CPU priority where available.
-- Avoid loading the entire file list or hashes into memory.
-- Make progress reporting cheap and bounded.
-- Document expected disk reads and estimated duration for a selected subset.
-
-If the platform lacks a requested scheduling feature, report that clearly rather
-than silently pretending it was applied.
-
-### Failure and race handling
-
-Migration should fail safely when:
-
-- A file disappears or changes while being processed.
-- A target object exists but does not verify against its hash.
-- A directory cannot be read.
-- A hardlink cannot be created.
-- The object store is on another filesystem.
-
-For a source file, open without following symlinks, check `fstat` before and
-after hashing through the open descriptor, and confirm that the pathname still
-identifies the same device and inode. Apply also compares the file with the
-reviewed manifest. These checks avoid a mandatory second full hash pass while
-detecting ordinary changes during processing.
-
-There remains an unavoidable race if another process writes after these checks.
-The selected archive subtree therefore must not be written to during apply. A
-failed file should be reported with its path and the run should exit nonzero
-after processing the selected batch, without deleting unverified data.
-
-Existing objects must be verified before reuse, at least in migration's safe
-mode. A later `oxygen-verify` provides periodic full integrity checking.
-
-### Concurrency and recovery
-
-Only one Oxygen migration/ingest/GC operation may run at a time. Use a local
-lock and release it on interruption. Each file operation should be atomic from
-the visible tree's perspective: create the object first, create a temporary
-hardlink in the destination directory, then replace the visible path. An
-interrupted run may leave an extra object, but must not leave a visible path
-pointing at a partial object.
-
-The reviewed manifest is the apply transaction described above. An interrupted
-or partially completed apply remains safe to rerun against the same manifest,
-subject to its identity and metadata checks.
-
-### Metadata and hardlink limitations
-
-Hardlinks share inode metadata. Replacing duplicate visible files can therefore
-change their permissions, timestamps, ownership, ACLs, and extended attributes
-to those of the object inode. This must be documented and tested on Oxygen.
-If per-path metadata is required by Pixette or WebDAV, hardlinks are not a
-sufficient representation and the design must stop rather than silently lose
+Moving the source inode into the Object Store and hardlinking its original
+name must preserve its existing timestamps and inode metadata. Migration must
+record or test this behavior on Oxygen, including permissions, ownership, ACLs,
+xattrs, and WebDAV/Pixette behavior. If per-path metadata is required, stop
+rather than silently adopting a hardlink representation that cannot preserve
 it.
 
-Content immutability is a safety rule, not a separate-permission guarantee: any
-account with write permission to a visible hardlink can modify the shared inode
-and invalidate the object's digest. The intended no-in-place-edit policy and
-permissions/ACL behavior through WebDAV must be tested before broad migration.
+Content immutability remains an operating policy: writing through any visible
+hardlink changes the object. Periodic `oxygen-verify` remains the full content
+integrity check, not a prerequisite SHA pass for every already-linked file.
 
 ## Ingest
 
 `oxygen-ingest` accepts incoming files and a target visible directory/year:
 
-1. Hash each incoming file using the same before/after descriptor checks as
+1. Hash each incoming file once using the same before/after descriptor checks as
    migration.
-2. If the object exists, verify and reuse it.
-3. If it is absent and the source is on the object filesystem, create it with a
-   race-safe hardlink.
-4. If the source is on another filesystem, copy it to a unique temporary file in
-   the object's destination directory, flush and close it, verify its size and
-   SHA-256, and atomically rename it into place. Never publish or link a partial
-   copy. If another operation created the object first, verify and reuse it.
-5. Once a verified object exists, create the requested visible hardlink,
+2. Look up the exact SHA-derived path in the Object Store.
+3. If the object exists as a regular, non-symlink file with the same size,
+   trust and reuse it without another full hash. Do not create another visible
+   hardlink by default; report the incoming file as already represented and
+   add it to the fail list for review.
+4. If the object is absent, publish it using a race-safe same-filesystem
+   hardlink or cross-filesystem verified temporary copy and atomic rename.
+5. Once a new verified object exists, create the requested visible hardlink,
    preserving the requested filename.
-6. Refuse in-place edits to existing objects.
+6. Refuse in-place edits to existing objects and refuse conflicting visible
+   destinations.
+
+A size mismatch, malformed object, symlink, or race is an error. An explicit
+safe-verification mode may hash an existing object before reuse when required.
+Periodic `oxygen-verify` remains the full integrity check.
 
 Visible filename collision behavior is explicit:
 
 ```text
 target absent                         create it
-target exists with the same digest    no-op
-target exists with a different digest refuse by default
+target exists with the same content   no-op
+target exists with different content  refuse by default
+incoming content already has a visible reference  fail-list; do not add one
 ```
 
-Ingest must never silently overwrite or rename an existing visible file.
+Ingest must never silently overwrite or rename an existing visible file. It
+must use the same progress, resource-limit, locking, and race-safety rules as
+migration.
 
-Ingest must use the same selection, progress, resource-limit, and race-safety
-rules as migration.
+### Object-reference authority
+
+Ingest must determine whether content is already present by deriving the
+canonical object path from the source SHA-256:
+
+```text
+<Object Store>/sha256/<first two hex>/<remaining 62 hex>
+```
+
+The object filename is the reference key. It must not consult
+`photos-oxygen-sha` or any path-based ledger. After hashing the incoming file,
+ingest must inspect the exact SHA-derived object path. The normal fast path is:
+
+- an existing regular, non-symlink object with the incoming file's size is
+  trusted and reused without hashing the object again;
+- a missing object is created using the existing same-filesystem hardlink or
+  cross-filesystem verified-copy path;
+- an existing object with a different size is not reused and must be reported
+  for safe repair or explicit full verification.
+
+This deliberately treats size as a cheap consistency check, not proof of
+integrity. The operational assumption is that corruption is rare and periodic
+`oxygen-verify` supplies the full integrity check. An explicit safe-verification
+mode may hash an existing object before reuse when required.
+
+If the requested visible destination is absent, ingest creates exactly one
+additional hardlink to the object. That additional link is the intended visible
+reference, not a duplicate object. If the destination already names the same
+content, ingest is a no-op; a different content at that name is refused.
+
+The object file's link count is the reference count: one link for the object
+itself plus one for the intended visible hardlink. Add a small
+reference-reporting operation that lists visible paths sharing each object
+inode, excluding `@eaDir`, metadata, and the Object Store. Use it to review
+unexpected references before removing a visible path. Removing a visible
+hardlink must never remove the object; an object with only its object-store link
+becomes an `oxygen-gc` candidate.
 
 ## Verification and deletion
 
@@ -229,10 +241,9 @@ Default output and durable logging must be useful but bounded:
 - `--verbose` may emit one line per file; `--debug` may add internal diagnostics.
 - Durable logs are optional. Detached runs may redirect bounded default output
   so an SSH disconnect does not lose progress information.
-- Limit retained logs by both count and total size; for example, retain at most
-  the newest 10 completed logs and 10 MiB total. Failed-run retention may be
-  longer but must remain bounded and configurable.
-- Apply the same bounded-retention principle to successful manifests. Never
+- Limit retained logs and fail lists by both count and total size; for example,
+  retain at most the newest 10 completed runs and 10 MiB total. Failed-run
+  retention may be longer but must remain bounded and configurable. Never
   rotate or delete an active run.
 - End with a machine-readable exit status and a human summary. Zero means every
   selected file was handled and verified; nonzero means review the error list.
@@ -256,7 +267,7 @@ practice.
   filenames behave before ingest.
 - Do not assume a sorted `--limit` is cheap: selection may require a full
   directory walk before hashing. Report discovery progress separately and
-  provide a manifest/subtree option for genuinely small trials.
+  provide a subtree option for genuinely small trials.
 - Test the real Synology filesystem and WebDAV layer, not only a local temp
   directory.
 
@@ -267,12 +278,12 @@ array. This plan records that risk but does not invent a backup solution.
 
 ## Pixette, Synology indexing, and permissions
 
-If the object store is beneath `/var/services/photo`, Pixette and archive scans
+If the Object Store is beneath the Archive Root, Pixette and archive scans
 must exclude it. Visible parent directories need permissions allowing intended
 Pixette/WebDAV operations; object files are immutable by policy, not by a
 separate permission mode, because hardlinks share inode permissions.
 
-All archive scans must prune both an in-tree object store and `@eaDir`.
+All archive scans must prune the Object Store, `@eaDir`, and `._DAV`, and exclude `.afpDeleted*` files.
 
 The representative Oxygen trial must create or migrate a visible hardlink, let
 Synology Photos/media indexing settle, recheck the object hash, and inspect
@@ -285,7 +296,7 @@ Synology/WebDAV/Pixette behavior.
 ## Transition from the ledger
 
 `photos-oxygen-sha` remains the safety reference during migration and should not
-be deleted until the object store has been verified and accepted. It is not the
+be deleted until the Object Store has been verified and accepted. It is not the
 long-term deduplication authority. A lightweight provenance catalogue may be
 added later, but object content and visible hardlinks are authoritative.
 
@@ -293,36 +304,52 @@ Migration and ingest are separate from the existing laptop review/copy flow.
 Do not replace the working ledger workflow wholesale until a representative
 subset has been migrated, verified, and tested through Pixette/WebDAV.
 
-Once that acceptance is complete:
+Once that acceptance is complete and reference-based ingest is proven:
 
 1. Remove the Makefile targets and CLI/library code for updating, pruning, and
-   installing `photos-oxygen-sha`.
-2. Remove `audit-new-remote` and `scripts/oxygen-new-hash-audit.sh`; migration
-   manifests and bounded progress replace their new-path audit.
-3. Remove ledger-based duplicate reporting and deletion; migration deduplicates
-   content as hardlinks while preserving visible paths.
-4. Update README, tests, and operational instructions to use the object store
-   and any future provenance catalogue instead of the ledger.
+   installing `photos-oxygen-sha` as an Oxygen archive authority. Keep a
+   portable digest inventory for laptop-side transfer decisions.
+2. Remove `audit-new-remote` and `scripts/oxygen-new-hash-audit.sh`; streaming
+   migration and object filename lookup replace their new-path audit.
+3. Remove ledger-based `duplicate-groups` and `delete-duplicates`; replace
+   them with the object-reference report and explicit deletion of unwanted
+   visible hardlinks.
+4. Replace direct `copy-tree`/`archive-reviewed` publication with reviewed
+   batch ingest once Oxygen ingest accepts the reviewed input flow. Until then,
+   retain the laptop review stage and transfer path.
+5. Add an Oxygen command to export a sorted, newline-delimited list of valid
+   SHA-256 object names for laptop comparison. The export is derived from
+   Object Store, contains digests rather than Archive Root paths, and is a
+   transfer snapshot rather than a second archive authority.
+6. Update README, Makefile, tests, and operational instructions to use object
+   references and the digest inventory instead of the path ledger.
 
-Until then, retain all three legacy workflows for rollback, laptop
+Until then, retain the ledger workflows for rollback, laptop
 `library-missing`, and comparison of migrated versus unmigrated files.
 
 ## Implementation order
 
-1. Add bounded selection (`--path`, `--limit`, deterministic ordering) and the
+1. Implement streaming, one-file-at-a-time migration with atomic publish,
+   deterministic selection, bounded progress, fail-list persistence, and the
    configurable object root.
-2. Add bounded progress, logging modes, retention, and final summaries.
-3. Add manifest-producing dry-run and manifest-authoritative apply.
-4. Add conservative resource controls, descriptor/stat race checks, locking,
-   and existing-object verification.
-5. Test migration on a small isolated directory and one real year subset,
-   including Synology indexing, WebDAV, ACLs, and xattrs.
-6. Implement `oxygen-verify`.
-7. Implement `oxygen-ingest`, including cross-filesystem copy and collision
-   behavior.
-8. Migrate the remaining archive in monitored, no-write batches.
-9. Consider garbage collection only after extended successful operation; it may
-   remain unimplemented.
+2. Implement the size-check ingest fast path and collision/fail-list behavior;
+   keep full existing-object hashing behind an explicit safe-verification mode.
+3. Remove manifest generation, manifest-authoritative apply, and their tests;
+   retain only a small optional dry-run preview if it remains useful.
+4. Test migration and ingest on an isolated directory and one real year,
+   including timestamps, hardlink counts, Synology indexing, WebDAV, ACLs,
+   xattrs, interruption, and rerun recovery.
+5. Implement `oxygen-verify` as the periodic full integrity check and add the
+   visible-reference report.
+6. Add a sorted digest-inventory export for laptop-side missing-file checks;
+   do not transfer or maintain the old path-based archive ledger for this
+   purpose.
+7. Migrate the remaining archive in monitored, no-write batches.
+8. Retire the ledger, audit, duplicate, and direct-copy workflows listed above
+   only after streaming migration, ingest, digest export, and production
+   acceptance checks pass.
+9. Consider garbage collection only after extended successful operation; it
+   may remain unimplemented.
 
 ## Tests
 
@@ -330,17 +357,29 @@ Minimum tests:
 
 - SHA-256 object fan-out and configurable same-filesystem object roots are
   correct.
-- The object store, `@eaDir`, ledgers, `.DS_Store`, and symlinks are excluded.
+- The Object Store, `@eaDir`, ledgers, `.DS_Store`, and symlinks are excluded.
 - `--root`, `--path`, `--limit`, and deterministic ordering select the expected
   files without allowing paths outside the root.
-- Dry-run performs no changes and emits a reviewable manifest.
-- Apply uses exactly the reviewed manifest and rejects changed or mismatched
-  entries.
-- Duplicate visible files become hardlinks to one object.
+- Streaming migration commits each file independently and resumes safely after
+  interruption without a manifest.
+- A source with multiple visible references is an error and enters the fail
+  list; an already-migrated source with exactly one visible reference is skipped.
+- An existing SHA-derived object is reused by size fast path without a second
+  hash by default; safe mode verifies its contents.
+- Existing SHA-derived objects cause duplicate incoming references to enter the
+  fail list rather than creating another visible hardlink.
 - Re-running migration is a no-op.
 - Changed/disappearing files fail safely without a mandatory second hash pass.
 - Corrupt existing objects are not reused.
 - Same-filesystem and cross-filesystem ingest publish only verified objects.
+- Ingest reuses an existing object using the SHA-derived filename and size
+  fast path, without a second full hash by default.
+- Safe verification can require the existing object's content hash before reuse.
+- Ingest does not read or update the path ledger.
+- Digest export contains only valid object-name hashes and is suitable for
+  transfer to the laptop.
+- The reference report groups visible paths by object inode and excludes
+  metadata and object-store paths.
 - Visible-name collisions follow the defined no-op/refuse rules.
 - Verify detects pathname/content mismatches.
 - Default logs remain bounded and retention limits are enforced.

@@ -22,6 +22,8 @@ TAR_PROGRESS = (
 REMOTE_EXCLUDES = (
     "-path '*/@eaDir' -prune -o "
     "-path '*/.objects' -prune -o "
+    "-path '*/._DAV' -prune -o "
+    "-name '.afpDeleted*' -prune -o "
     "-name 'photos-oxygen-sha*' -prune -o "
 )
 
