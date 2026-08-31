@@ -8,7 +8,7 @@ Implementation is not ready for production. `PLAN.md` is the source of truth; th
 - Manifest generation and manifest-authoritative apply remain available for reviewed legacy workflows; streaming apply is now the normal path.
 - Migration enforces source/object inode identity and expected link counts, records failures in append-safe JSONL, and supports halt or reviewed continuation.
 - Migration revalidates source content before publication; portable final replacement still has a documented TOCTOU limitation.
-- Ingest reuses only verified objects with no existing visible reference; it still needs the planned size-only fast path and explicit failure-list/safe-verification options.
+- Ingest reuses same-sized objects without a second hash by default, rejects existing visible references, and supports opt-in `--safe-verify`; failure-list reporting remains outstanding.
 - Ingest rejects symlinked source and destination parents before resolving paths.
 - There is no visible-reference report or sorted digest export.
 - Oxygen entry points use Python 3.10 type-syntax features, although Oxygen runs Python 3.9.

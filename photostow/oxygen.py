@@ -372,14 +372,22 @@ def verify_objects(
 
 
 def ingest(
-    source: Path, destination: Path, root: Path, object_root: Path | None = None
+    source: Path,
+    destination: Path,
+    root: Path,
+    object_root: Path | None = None,
+    safe_verify: bool = False,
 ) -> str:
     with _operation_lock(root):
-        return _ingest_locked(source, destination, root, object_root)
+        return _ingest_locked(source, destination, root, object_root, safe_verify)
 
 
 def _ingest_locked(
-    source: Path, destination: Path, root: Path, object_root: Path | None = None
+    source: Path,
+    destination: Path,
+    root: Path,
+    object_root: Path | None = None,
+    safe_verify: bool = False,
 ) -> str:
     if source.is_symlink() or any(parent.is_symlink() for parent in source.parents):
         raise ValueError("source must be a regular file")
@@ -397,7 +405,7 @@ def _ingest_locked(
     object_root = object_root or default_object_root(root)
     _check_same_filesystem(root, object_root)
     object_root = object_root.resolve()
-    digest, _ = _stable_digest(source)
+    digest, source_stat = _stable_digest(source)
     if destination.exists():
         if destination.is_file() and _stable_digest(destination)[0] == digest:
             return digest
@@ -407,7 +415,12 @@ def _ingest_locked(
     target = object_path(root, digest, object_root)
     target.parent.mkdir(parents=True, exist_ok=True)
     if target.exists():
-        _verify_object(target, digest)
+        if target.is_symlink():
+            raise OSError(f"object path is a symlink: {target}")
+        if target.stat().st_size != source_stat.st_size:
+            raise OSError(f"object size does not match source: {target}")
+        if safe_verify:
+            _verify_object(target, digest)
         if target.stat().st_nlink != 1:
             raise ValueError("object already has a visible reference")
     else:

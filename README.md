@@ -148,7 +148,7 @@ oxygen-migrate 2006 --dry-run --limit 10 --exclude 'incoming-*' \
   --jobs 1 --nice 10 --manifest trial.json
 oxygen-migrate --apply trial.json
 oxygen-ingest incoming.jpg /var/services/photo/2025/incoming.jpg \
-  --root /var/services/photo
+  --root /var/services/photo --safe-verify
 oxygen-verify /volume1/photostow --limit 10 --verbose
 oxygen-gc /volume1/photostow
 ```

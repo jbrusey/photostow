@@ -5586,6 +5586,23 @@ def test_ingest_rejects_concurrent_operation(tmp_path: Path) -> None:
             ingest(incoming, root / "photo.jpg", root)
 
 
+def test_ingest_safe_verify_rejects_corrupt_existing_object(tmp_path: Path) -> None:
+    source = tmp_path / "source.jpg"
+    source.write_bytes(b"photo")
+    root = tmp_path / "archive"
+    root.mkdir()
+    destination = root / "photo.jpg"
+    object_root = root / ".objects"
+    digest = hashlib.sha256(b"photo").hexdigest()
+    target = object_path(root, digest, object_root)
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"other")
+
+    with pytest.raises(OSError, match="does not match digest"):
+        ingest(source, destination, root, object_root, safe_verify=True)
+    assert not destination.exists()
+
+
 def test_ingest_rejects_existing_object_with_visible_reference(tmp_path: Path) -> None:
     source = tmp_path / "source.jpg"
     source.write_bytes(b"photo")
