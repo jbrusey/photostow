@@ -10,7 +10,9 @@ import shutil
 import tempfile
 import time
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Iterator
 
 from photostow.core import sha256_file
 
@@ -27,14 +29,14 @@ def default_object_root(root: Path) -> Path:
     )
 
 
-def visible_files(
+def iter_visible_files(
     root: Path,
     selected: Path | None = None,
     progress: bool = False,
     verbose: bool = False,
     exclude: tuple[str, ...] = (),
     excluded_root: Path | None = None,
-) -> list[Path]:
+) -> Iterator[Path]:
     if type(progress) is not bool or type(verbose) is not bool:
         raise TypeError("progress and verbose must be booleans")
     if not isinstance(exclude, tuple):
@@ -80,7 +82,7 @@ def visible_files(
     if excluded_root and (
         selected == excluded_root or excluded_root in selected.parents
     ):
-        return []
+        return
     if selected.is_file():
         if (
             selected.is_symlink()
@@ -88,16 +90,15 @@ def visible_files(
             or selected.name in {".DS_Store", ".photostow.lock"}
             or any(fnmatch.fnmatch(selected.name, pattern) for pattern in exclude)
         ):
-            return []
+            return
         if selected.name.startswith("photos-oxygen-sha"):
-            return []
-        return [selected]
+            return
+        yield selected
+        return
     if selected.name in {"@eaDir", ".objects", "._DAV"} or any(
         fnmatch.fnmatch(selected.name, pattern) for pattern in exclude
     ):
-        return []
-    files: list[Path] = []
-
+        return
     def onerror(error: OSError) -> None:
         raise error
 
@@ -116,20 +117,29 @@ def visible_files(
             )
             and not any(fnmatch.fnmatch(name, pattern) for pattern in exclude)
         ]
-        files.extend(
-            Path(directory) / name
-            for name in names
-            if not any(fnmatch.fnmatch(name, pattern) for pattern in exclude)
-        )
-    return sorted(
-        path
-        for path in files
-        if (
-            not path.name.startswith("photos-oxygen-sha")
-            and not path.name.startswith(".afpDeleted")
-            and path.name not in {".DS_Store", ".photostow.lock"}
-            and not path.is_symlink()
-        )
+        dirs.sort()
+        for name in sorted(names):
+            path = Path(directory) / name
+            if (
+                not path.name.startswith("photos-oxygen-sha")
+                and not path.name.startswith(".afpDeleted")
+                and path.name not in {".DS_Store", ".photostow.lock"}
+                and not path.is_symlink()
+                and not any(fnmatch.fnmatch(name, pattern) for pattern in exclude)
+            ):
+                yield path
+
+
+def visible_files(
+    root: Path,
+    selected: Path | None = None,
+    progress: bool = False,
+    verbose: bool = False,
+    exclude: tuple[str, ...] = (),
+    excluded_root: Path | None = None,
+) -> list[Path]:
+    return list(
+        iter_visible_files(root, selected, progress, verbose, exclude, excluded_root)
     )
 
 
@@ -437,6 +447,32 @@ def _ensure_object(source: Path, target: Path, digest: str) -> None:
         raise
 
 
+def _record_failure(
+    failure_list: Path,
+    root: Path,
+    path: Path,
+    digest: str | None,
+    reason: str,
+    object_root: Path,
+) -> None:
+    record = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "path": str(path),
+        "digest": digest,
+        "object_path": str(object_path(root, digest, object_root)) if digest else None,
+        "reason": reason,
+    }
+    if failure_list.is_symlink() or any(
+        parent.is_symlink() for parent in failure_list.parents
+    ):
+        raise ValueError(f"failure list path is unsafe: {failure_list}")
+    failure_list.parent.mkdir(parents=True, exist_ok=True)
+    with failure_list.open("a", encoding="utf-8") as output:
+        output.write(json.dumps(record, ensure_ascii=False) + "\n")
+        output.flush()
+        os.fsync(output.fileno())
+
+
 def _process_record(
     root: Path,
     object_root: Path,
@@ -456,6 +492,15 @@ def _process_record(
             raise OSError(f"object path parent is a symlink: {parent}")
     if obj.exists():
         _verify_object(obj, digest)
+        if os.path.samefile(path, obj):
+            if path.stat().st_nlink != 2:
+                raise OSError(
+                    f"already-migrated inode has unexpected link count: {path}"
+                )
+            return
+        raise OSError(f"object already exists for different inode: {obj}")
+    if path.stat().st_nlink != 1:
+        raise OSError(f"source has unexpected link count: {path}")
     if dry_run:
         if verbose:
             action = "link" if obj.exists() else "create"
@@ -516,6 +561,8 @@ def migrate(
     apply_manifest: Path | None = None,
     exclude: tuple[str, ...] = (),
     verbose: bool = False,
+    failure_list: Path | None = None,
+    continue_on_error: bool = False,
 ) -> int:
     if limit is not None and type(limit) is not int:
         raise ValueError("limit must be a nonnegative integer")
@@ -533,6 +580,8 @@ def migrate(
             apply_manifest,
             exclude,
             verbose,
+            failure_list,
+            continue_on_error,
         )
 
 
@@ -546,9 +595,12 @@ def _migrate_locked(
     apply_manifest: Path | None = None,
     exclude: tuple[str, ...] = (),
     verbose: bool = False,
+    failure_list: Path | None = None,
+    continue_on_error: bool = False,
 ) -> int:
     root = root.resolve()
     errors: list[str] = []
+    streaming = False
     if apply_manifest:
         if apply_manifest.is_symlink():
             raise ValueError(f"refusing symlink apply manifest: {apply_manifest}")
@@ -639,31 +691,62 @@ def _migrate_locked(
         _check_same_filesystem(root, object_root)
         object_root = object_root.resolve()
         discovery_exclude = exclude + ((manifest.name,) if manifest else ())
-        paths = visible_files(
+        paths = iter_visible_files(
             root,
             selected,
             progress=True,
             verbose=verbose,
             exclude=discovery_exclude,
             excluded_root=object_root,
-        )[:limit]
-        records = []
-        last_report = time.monotonic() - 30
-        for index, path in enumerate(paths, 1):
-            now = time.monotonic()
-            if verbose or now - last_report >= 30:
-                print(f"hashing {index}/{len(paths)} {path}", flush=True)
-                last_report = now
-            try:
-                digest, stat = _stable_digest(path)
-            except OSError as error:
-                errors.append(f"{path}: {error}")
-                continue
-            records.append((digest, path, stat))
+        )
+        if dry_run:
+            paths = list(paths)[:limit]
+            records = []
+            last_report = time.monotonic() - 30
+            for index, path in enumerate(paths, 1):
+                now = time.monotonic()
+                if verbose or now - last_report >= 30:
+                    print(f"hashing {index}/{len(paths)} {path}", flush=True)
+                    last_report = now
+                try:
+                    digest, stat = _stable_digest(path)
+                except OSError as error:
+                    errors.append(f"{path}: {error}")
+                    continue
+                records.append((digest, path, stat))
+        else:
+            streaming = True
+
+            def hashed_records() -> Iterator[tuple[str, Path, os.stat_result]]:
+                for index, path in enumerate(paths, 1):
+                    if limit is not None and index > limit:
+                        break
+                    if verbose:
+                        print(f"hashing {index} {path}", flush=True)
+                    try:
+                        digest, stat = _stable_digest(path)
+                    except OSError as error:
+                        reason = str(error)
+                        errors.append(f"{path}: {reason}")
+                        _record_failure(
+                            failure_list or Path.cwd() / "migration-failures.jsonl",
+                            root,
+                            path,
+                            None,
+                            reason,
+                            object_root,
+                        )
+                        if not continue_on_error:
+                            raise OSError(f"migration failed: {path}: {reason}")
+                        continue
+                    yield digest, path, stat
+
+            records = hashed_records()
     object_root = object_root.resolve()
     _check_same_filesystem(root, object_root)
     if not dry_run:
-        _check_resources(root, len(records))
+        if not streaming:
+            _check_resources(root, len(records))
         _check_hardlink_support(root)
     if manifest and dry_run:
         payload = (
@@ -703,11 +786,22 @@ def _migrate_locked(
                 os.close(directory_fd)
         finally:
             temporary.unlink(missing_ok=True)
+    failure_list = failure_list or Path.cwd() / "migration-failures.jsonl"
+    processed = 0
     for digest, path, _ in records:
         try:
+            if streaming:
+                _check_resources(root, 1)
             _process_record(root, object_root, digest, path, dry_run, verbose)
-        except OSError as error:
-            errors.append(f"{path}: {error}")
+            processed += 1
+            if streaming and verbose:
+                print(f"committed {path}", flush=True)
+        except (OSError, ValueError) as error:
+            reason = str(error)
+            errors.append(f"{path}: {reason}")
+            _record_failure(failure_list, root, path, digest, reason, object_root)
+            if not continue_on_error:
+                break
     if errors:
         raise OSError("migration failed: " + "; ".join(errors))
-    return len(records)
+    return processed if streaming else len(records)

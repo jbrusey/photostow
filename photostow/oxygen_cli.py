@@ -25,6 +25,14 @@ def main() -> int:
     parser.add_argument(
         "--manifest", type=Path, help="write reviewed dry-run selection"
     )
+    parser.add_argument(
+        "--failure-list", type=Path, help="append per-file failures as JSONL"
+    )
+    parser.add_argument(
+        "--continue-on-error",
+        action="store_true",
+        help="record file failures and continue",
+    )
     parser.add_argument("--nice", type=int, default=10, help="add CPU niceness")
     parser.add_argument(
         "--jobs", type=int, default=1, help="hash workers (only 1 is supported)"
@@ -78,7 +86,7 @@ def main() -> int:
             print(f"could not apply --nice {args.nice}: {error}", file=sys.stderr)
             return 2
     print(
-        f"oxygen-migrate mode={'apply' if args.apply else 'dry-run'} "
+        f"oxygen-migrate mode={'dry-run' if args.dry_run else 'apply'} "
         f"started={datetime.now(timezone.utc).isoformat()} "
         f"root={root.resolve()} "
         f"target={args.target or '.'} path={args.path or '.'} "
@@ -99,7 +107,7 @@ def main() -> int:
     try:
         count = migrate(
             root,
-            dry_run=not bool(args.apply),
+            dry_run=args.dry_run,
             selected=selected,
             limit=args.limit,
             object_root=args.object_root,
@@ -107,6 +115,8 @@ def main() -> int:
             apply_manifest=apply_manifest,
             exclude=tuple(args.exclude),
             verbose=args.verbose,
+            failure_list=args.failure_list,
+            continue_on_error=args.continue_on_error,
         )
     except KeyboardInterrupt:
         print("oxygen-migrate interrupted; no completion summary", file=sys.stderr)
@@ -114,7 +124,7 @@ def main() -> int:
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"oxygen-migrate failed: {error}", file=sys.stderr)
         return 1
-    action = "would migrate" if not args.apply else "migrated"
+    action = "would migrate" if args.dry_run else "migrated"
     elapsed = time.monotonic() - started_monotonic
     rate = count / elapsed if elapsed else 0.0
     print(

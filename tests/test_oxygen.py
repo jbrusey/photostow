@@ -5622,6 +5622,66 @@ def test_ingest_refuses_existing_destination(tmp_path: Path) -> None:
         ingest(incoming, destination, root)
 
 
+def test_migrate_publishes_before_discovering_next_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first = tmp_path / "a.jpg"
+    second = tmp_path / "b.jpg"
+    first.write_bytes(b"a")
+    second.write_bytes(b"b")
+    original_digest = oxygen._stable_digest
+    calls = 0
+
+    def digest(path: Path):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            assert os.path.samefile(
+                first, object_path(tmp_path, hashlib.sha256(b"a").hexdigest())
+            )
+        return original_digest(path)
+
+    monkeypatch.setattr(oxygen, "_stable_digest", digest)
+    assert migrate(tmp_path, dry_run=False) == 2
+
+
+def test_migrate_records_link_count_failure(tmp_path: Path) -> None:
+    source = tmp_path / "photo.jpg"
+    source.write_bytes(b"photo")
+    os.link(source, tmp_path / "second-visible.jpg")
+    failures = tmp_path / "migration-failures.jsonl"
+
+    with pytest.raises(OSError, match="unexpected link count"):
+        migrate(tmp_path, dry_run=False, failure_list=failures)
+
+    record = __import__("json").loads(failures.read_text(encoding="utf-8"))
+    assert record["path"] == str(source)
+    assert record["digest"] == hashlib.sha256(b"photo").hexdigest()
+    assert record["object_path"].endswith(record["digest"][2:])
+    assert not (tmp_path / ".objects").exists()
+
+
+def test_migrate_continues_after_recorded_failure(tmp_path: Path) -> None:
+    bad = tmp_path / "a-bad.jpg"
+    bad.write_bytes(b"bad")
+    os.link(bad, tmp_path / "a-second-visible.jpg")
+    good = tmp_path / "b-good.jpg"
+    good.write_bytes(b"good")
+    failures = tmp_path / "migration-failures.jsonl"
+
+    with pytest.raises(OSError, match="migration failed"):
+        migrate(
+            tmp_path,
+            dry_run=False,
+            failure_list=failures,
+            continue_on_error=True,
+        )
+
+    digest = hashlib.sha256(b"good").hexdigest()
+    assert os.path.samefile(good, object_path(tmp_path, digest))
+    assert len(failures.read_text(encoding="utf-8").splitlines()) == 2
+
+
 def test_migrate_checks_hardlink_support_before_apply(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

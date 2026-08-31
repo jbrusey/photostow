@@ -4,10 +4,10 @@ Implementation is not ready for production. `PLAN.md` is the source of truth; th
 
 ## Current implementation gaps
 
-- Migration still discovers and hashes the complete selection before publishing files. It must process one file at a time.
+- Migration apply now discovers, hashes, and publishes one file at a time. Dry-run and manifest generation still intentionally collect the selected records.
 - Migration still supports manifest-authoritative apply. The normal workflow must use streaming apply; manifest generation and apply should be removed.
 - Migration does not enforce the required source/object inode and link-count rules.
-- Migration can continue after publish errors, has no durable fail list, and can leave an invalid object after a source changes during publication.
+- Migration now records per-file publish failures in append-safe JSONL and halts by default; `--continue-on-error` is available for reviewed batch runs. Streaming apply and publish-race hardening remain outstanding.
 - Ingest fully hashes existing objects and creates another visible hardlink when the object already has a visible reference. It needs the size fast path, duplicate fail-list behavior, and explicit safe verification.
 - Ingest must reject symlinked source and destination parents before resolving paths.
 - There is no visible-reference report or sorted digest export.

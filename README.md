@@ -139,8 +139,9 @@ The Makefile wraps the CLI. For custom paths, use `uv run photostow --help` and 
 
 ## Content-addressed Oxygen commands
 
-These commands run locally on Oxygen with Python 3.9.14. Migration defaults to
-dry-run; ingest applies changes, while verify and GC are report-only:
+These commands run locally on Oxygen with Python 3.9.14. Migration applies
+changes by default; use `--dry-run` for a preview. Ingest applies changes,
+while verify and GC are report-only:
 
 ```sh
 oxygen-migrate 2006 --dry-run --limit 10 --exclude 'incoming-*' \
@@ -163,13 +164,17 @@ For a custom object-root name, pass the archive root to GC as well:
 `oxygen-gc /archive-objects --root /var/services/photo`.
 Migration hashes serially (`--jobs 1`) and lowers CPU priority by default;
 use `--verbose` for one line per discovered/hashed file. Without it, output is
-bounded to startup and summary progress. `--limit` bounds files after discovery;
+bounded to startup and summary progress. Apply failures are appended as JSONL
+to `migration-failures.jsonl` by default; use `--failure-list` to choose the
+path and `--continue-on-error` to process later files. Apply processes files
+one at a time; `--limit` bounds the streamed selection;
 it does not make a large directory walk cheap. Use `--path` for a genuinely small
 trial subtree. A higher `--jobs` value is rejected
 until parallel hashing is implemented. Repeat
 `--exclude PATTERN` to omit files or subtrees.
 Review a manifest before applying it; apply refuses files whose identity, size,
-mtime, or digest changed. `oxygen-gc` is report-only and does not delete files. It verifies the object
+mtime, or digest changed. Migration refuses multiple visible references to one
+object and records those paths for review. `oxygen-gc` is report-only and does not delete files. It verifies the object
 store first, lists link-count-one candidates, and reports retained objects with
 other link counts; malformed or corrupt stores produce no candidate report.
 
