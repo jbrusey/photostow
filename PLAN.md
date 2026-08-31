@@ -44,6 +44,10 @@ oxygen-verify    check object names and contents
 oxygen-gc        optionally remove unreferenced objects
 ```
 
+`oxygen-migrate` applies changes by default. `--dry-run` is an explicit preview
+mode. Migration halts on the first error by default; `--continue-on-error`
+allows the run to process later files after recording the failure.
+
 The existing laptop-side Photos workflow can remain separate while this is
 introduced and tested.
 
@@ -110,8 +114,12 @@ path is proven.
 ### Failure list and safety
 
 The fail list must include at least the source path, digest when known, object
-path, reason, and timestamp. It must be append-safe and reviewable without
-being mistaken for a successful migration record.
+path, reason, and timestamp. The default location is
+`./migration-failures.jsonl` in the caller's working directory. It uses
+append-safe JSON Lines records and must remain reviewable without being
+mistaken for a successful migration record. Migration halts on the first error
+by default; `--continue-on-error` records the error and continues with later
+files.
 
 If the digest-derived object already exists, migration must never overwrite it,
 rename the source over it, or create another visible hardlink. The existing
