@@ -297,6 +297,30 @@ def _gc_candidates(object_root: Path) -> list[Path]:
     return candidates
 
 
+def object_digests(object_root: Path) -> Iterator[str]:
+    if object_root.is_symlink() or any(
+        parent.is_symlink() for parent in object_root.parents
+    ):
+        raise ValueError(f"unsafe object root: {object_root}")
+    store = object_root.resolve() / "sha256"
+    if store.is_symlink() or not store.is_dir():
+        raise ValueError(f"missing object store: {store}")
+    for shard in sorted(store.iterdir()):
+        if (
+            not shard.is_dir()
+            or shard.is_symlink()
+            or not re.fullmatch(r"[0-9a-f]{2}", shard.name)
+        ):
+            continue
+        for entry in sorted(shard.iterdir()):
+            if (
+                entry.is_file()
+                and not entry.is_symlink()
+                and re.fullmatch(r"[0-9a-f]{62}", entry.name)
+            ):
+                yield shard.name + entry.name
+
+
 def verify_objects(
     object_root: Path,
     selected: Path | None = None,

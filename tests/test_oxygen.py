@@ -4344,6 +4344,17 @@ def test_migrate_reports_hash_progress_before_each_hash(
     assert not (tmp_path / ".objects").exists()
 
 
+def test_object_digests_lists_sorted_valid_objects(tmp_path: Path) -> None:
+    store = tmp_path / "sha256"
+    (store / "ff").mkdir(parents=True)
+    (store / "00").mkdir()
+    (store / "00" / ("a" * 62)).write_bytes(b"a")
+    (store / "ff" / ("b" * 62)).write_bytes(b"b")
+    (store / "00" / "invalid").write_bytes(b"ignored")
+
+    assert list(oxygen.object_digests(tmp_path)) == ["00" + "a" * 62, "ff" + "b" * 62]
+
+
 def test_verify_objects_rejects_symlink_root_parent(tmp_path: Path) -> None:
     target = tmp_path / "real"
     target.mkdir()
