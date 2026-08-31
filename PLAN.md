@@ -184,6 +184,31 @@ Ingest must never silently overwrite or rename an existing visible file. It
 must use the same progress, resource-limit, locking, and race-safety rules as
 migration.
 
+The laptop-side planner is responsible for choosing the visible destination;
+Oxygen ingest receives an explicit destination and must not query EXIF data.
+The normal destination is `YYYY/original-filename`, using the capture date from
+EXIF. Missing or invalid dates go to an explicit `undated/` review area.
+Destination collisions are deterministic: the same destination and digest is a
+no-op; the same destination with a different digest is refused; a digest-based
+suffix may be used only by the planner and only when the review policy permits
+it.
+
+### Laptop transfer planning
+
+The Object Store supplies a sorted digest inventory for the laptop. The laptop
+keeps a separate incremental hash cache with the relative path, device, inode,
+size, modification time, and SHA-256. Unchanged fingerprints reuse the cached
+hash; changed or new files are hashed. The cache is an optimization, not an
+authority, and a full rehash remains available for periodic verification.
+
+Hashing and transfer may overlap. As each file's digest becomes known, compare
+it with the Oxygen digest set and queue only missing digests. Maintain an
+in-memory claimed-digest set so duplicate laptop files queue once, while a
+duplicate report records every duplicate group and processing continues. A
+completed run reports duplicates with a non-zero status. The transfer manifest
+must retain source and intended destination paths even though digest membership
+uses hashes only, and it must be durable enough to resume after interruption.
+
 ### Object-reference authority
 
 Ingest must determine whether content is already present by deriving the
@@ -329,7 +354,10 @@ Once that acceptance is complete and reference-based ingest is proven:
    SHA-256 object names for laptop comparison. The export is derived from
    Object Store, contains digests rather than Archive Root paths, and is a
    transfer snapshot rather than a second archive authority.
-6. Update README, Makefile, tests, and operational instructions to use object
+6. Add the laptop incremental hash cache and resumable planner/transfer flow;
+   overlap hashing with transfer, report duplicate groups while continuing, and
+   queue only one representative per digest.
+7. Update README, Makefile, tests, and operational instructions to use object
    references and the digest inventory instead of the path ledger.
 
 Until then, retain the ledger workflows for rollback, laptop
@@ -352,12 +380,15 @@ Until then, retain the ledger workflows for rollback, laptop
 6. Add a sorted digest-inventory export for laptop-side missing-file checks;
    do not transfer or maintain the old path-based archive ledger for this
    purpose.
-7. Migrate the remaining archive in monitored, no-write batches.
-8. Retire the ledger, audit, duplicate, and direct-copy workflows listed above
+7. Add the laptop incremental hash cache and resumable transfer planner;
+   duplicate groups are reported while processing continues and only one
+   representative per digest is queued.
+8. Migrate the remaining archive in monitored, no-write batches.
+9. Retire the ledger, audit, duplicate, and direct-copy workflows listed above
    only after streaming migration, ingest, digest export, and production
    acceptance checks pass.
-9. Consider garbage collection only after extended successful operation; it
-   may remain unimplemented.
+10. Consider garbage collection only after extended successful operation; it
+    may remain unimplemented.
 
 ## Tests
 
