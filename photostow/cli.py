@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 import signal
 import sys
@@ -33,6 +34,7 @@ from photostow.remote import (
     update_remote_ledger,
     validate_source_paths,
 )
+from photostow.transfer import plan_missing, scan_cached
 
 
 def cmd_hash(args: argparse.Namespace) -> int:
@@ -40,6 +42,26 @@ def cmd_hash(args: argparse.Namespace) -> int:
     for digest, path in hash_tree(root):
         print(f"{digest}  {path}")
     return 0
+
+
+def cmd_transfer_plan(args: argparse.Namespace) -> int:
+    oxygen_digests = set()
+    with open(args.oxygen_inventory, encoding="utf-8") as stream:
+        for line in stream:
+            digest = line.strip()
+            if digest and not re.fullmatch(r"[0-9a-f]{64}", digest):
+                raise ValueError(f"invalid Oxygen digest: {digest}")
+            if digest:
+                oxygen_digests.add(digest)
+    files = scan_cached(Path(args.source_root), Path(args.cache))
+    plan = plan_missing(files, oxygen_digests)
+    with Path(args.output).open("w", encoding="utf-8") as stream:
+        stream.write("sha256\tpath\n")
+        stream.writelines(f"{record.digest}\t{record.path}\n" for record in plan.files)
+    for digest, paths in sorted(plan.duplicates.items()):
+        print(f"duplicate {digest}: {' | '.join(map(str, paths))}", file=sys.stderr)
+    print(f"queued {len(plan.files)} files", file=sys.stderr)
+    return 1 if plan.duplicates else 0
 
 
 def cmd_missing(args: argparse.Namespace) -> int:
@@ -203,6 +225,15 @@ def build_parser() -> argparse.ArgumentParser:
     hash_parser = sub.add_parser("hash", help="hash all files under a directory")
     hash_parser.add_argument("root")
     hash_parser.set_defaults(func=cmd_hash)
+
+    transfer_parser = sub.add_parser(
+        "transfer-plan", help="plan one transfer per missing content digest"
+    )
+    transfer_parser.add_argument("source_root")
+    transfer_parser.add_argument("oxygen_inventory")
+    transfer_parser.add_argument("cache")
+    transfer_parser.add_argument("output")
+    transfer_parser.set_defaults(func=cmd_transfer_plan)
 
     missing_parser = sub.add_parser(
         "missing", help="list source hashes absent from archive"
