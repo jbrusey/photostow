@@ -618,6 +618,7 @@ def _migrate_locked(
 ) -> int:
     root = root.resolve()
     errors: list[str] = []
+    failure_list = failure_list or Path.cwd().resolve() / "migration-failures.jsonl"
     records: (
         list[tuple[str, Path, os.stat_result]]
         | Iterator[tuple[str, Path, os.stat_result]]
@@ -753,7 +754,7 @@ def _migrate_locked(
                         errors.append(f"{path}: {reason}")
                         assert object_root is not None
                         _record_failure(
-                            failure_list or Path.cwd() / "migration-failures.jsonl",
+                            failure_list,
                             root,
                             path,
                             None,
@@ -811,7 +812,6 @@ def _migrate_locked(
                 os.close(directory_fd)
         finally:
             temporary.unlink(missing_ok=True)
-    failure_list = failure_list or Path.cwd() / "migration-failures.jsonl"
     processed = 0
     for digest, path, _ in records:
         try:

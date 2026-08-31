@@ -5688,6 +5688,28 @@ def test_migrate_records_link_count_failure(tmp_path: Path) -> None:
     assert not (tmp_path / ".objects").exists()
 
 
+def test_migrate_default_failure_list_resolves_working_directory_symlink(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real_home = tmp_path / "home"
+    real_home.mkdir()
+    linked_home = tmp_path / "linked-home"
+    linked_home.symlink_to(real_home, target_is_directory=True)
+    monkeypatch.setattr(
+        oxygen.Path,
+        "cwd",
+        classmethod(lambda cls: linked_home),
+    )
+    source = tmp_path / "photo.jpg"
+    source.write_bytes(b"photo")
+    os.link(source, tmp_path / "second-visible.jpg")
+
+    with pytest.raises(OSError, match="unexpected link count"):
+        migrate(tmp_path, dry_run=False)
+
+    assert (real_home / "migration-failures.jsonl").is_file()
+
+
 def test_migrate_continues_after_recorded_failure(tmp_path: Path) -> None:
     bad = tmp_path / "a-bad.jpg"
     bad.write_bytes(b"bad")
