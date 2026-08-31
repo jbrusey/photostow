@@ -5,9 +5,6 @@ import pytest
 from photostow import cli
 
 
-
-
-
 def test_documented_status_files_exist() -> None:
     root = Path(__file__).parents[1]
     assert (root / "TECHNICAL_REVIEW.md").is_file()

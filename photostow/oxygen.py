@@ -99,6 +99,7 @@ def iter_visible_files(
         fnmatch.fnmatch(selected.name, pattern) for pattern in exclude
     ):
         return
+
     def onerror(error: OSError) -> None:
         raise error
 
@@ -380,11 +381,13 @@ def ingest(
 def _ingest_locked(
     source: Path, destination: Path, root: Path, object_root: Path | None = None
 ) -> str:
-    if source.is_symlink():
+    if source.is_symlink() or any(parent.is_symlink() for parent in source.parents):
         raise ValueError("source must be a regular file")
     source = source.resolve()
     root = root.resolve()
-    if destination.is_symlink():
+    if destination.is_symlink() or any(
+        parent.is_symlink() for parent in destination.parents
+    ):
         raise FileExistsError(destination)
     destination = destination.resolve()
     if not source.is_file() or source.is_symlink():
@@ -405,6 +408,8 @@ def _ingest_locked(
     target.parent.mkdir(parents=True, exist_ok=True)
     if target.exists():
         _verify_object(target, digest)
+        if target.stat().st_nlink != 1:
+            raise ValueError("object already has a visible reference")
     else:
         fd, name = tempfile.mkstemp(dir=target.parent)
         os.close(fd)
@@ -600,6 +605,10 @@ def _migrate_locked(
 ) -> int:
     root = root.resolve()
     errors: list[str] = []
+    records: (
+        list[tuple[str, Path, os.stat_result]]
+        | Iterator[tuple[str, Path, os.stat_result]]
+    ) = []
     streaming = False
     if apply_manifest:
         if apply_manifest.is_symlink():
@@ -689,9 +698,10 @@ def _migrate_locked(
     else:
         object_root = object_root or default_object_root(root)
         _check_same_filesystem(root, object_root)
+        assert object_root is not None
         object_root = object_root.resolve()
         discovery_exclude = exclude + ((manifest.name,) if manifest else ())
-        paths = iter_visible_files(
+        discovered = iter_visible_files(
             root,
             selected,
             progress=True,
@@ -700,7 +710,7 @@ def _migrate_locked(
             excluded_root=object_root,
         )
         if dry_run:
-            paths = list(paths)[:limit]
+            paths = list(discovered)[:limit]
             records = []
             last_report = time.monotonic() - 30
             for index, path in enumerate(paths, 1):
@@ -718,7 +728,7 @@ def _migrate_locked(
             streaming = True
 
             def hashed_records() -> Iterator[tuple[str, Path, os.stat_result]]:
-                for index, path in enumerate(paths, 1):
+                for index, path in enumerate(discovered, 1):
                     if limit is not None and index > limit:
                         break
                     if verbose:
@@ -728,6 +738,7 @@ def _migrate_locked(
                     except OSError as error:
                         reason = str(error)
                         errors.append(f"{path}: {reason}")
+                        assert object_root is not None
                         _record_failure(
                             failure_list or Path.cwd() / "migration-failures.jsonl",
                             root,
@@ -746,6 +757,7 @@ def _migrate_locked(
     _check_same_filesystem(root, object_root)
     if not dry_run:
         if not streaming:
+            assert isinstance(records, list)
             _check_resources(root, len(records))
         _check_hardlink_support(root)
     if manifest and dry_run:
@@ -804,4 +816,7 @@ def _migrate_locked(
                 break
     if errors:
         raise OSError("migration failed: " + "; ".join(errors))
-    return processed if streaming else len(records)
+    if streaming:
+        return processed
+    assert isinstance(records, list)
+    return len(records)

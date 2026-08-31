@@ -5,11 +5,11 @@ Implementation is not ready for production. `PLAN.md` is the source of truth; th
 ## Current implementation gaps
 
 - Migration apply now discovers, hashes, and publishes one file at a time. Dry-run and manifest generation still intentionally collect the selected records.
-- Migration still supports manifest-authoritative apply. The normal workflow must use streaming apply; manifest generation and apply should be removed.
-- Migration does not enforce the required source/object inode and link-count rules.
-- Migration now records per-file publish failures in append-safe JSONL and halts by default; `--continue-on-error` is available for reviewed batch runs. Streaming apply and publish-race hardening remain outstanding.
-- Ingest fully hashes existing objects and creates another visible hardlink when the object already has a visible reference. It needs the size fast path, duplicate fail-list behavior, and explicit safe verification.
-- Ingest must reject symlinked source and destination parents before resolving paths.
+- Manifest generation and manifest-authoritative apply remain available for reviewed legacy workflows; streaming apply is now the normal path.
+- Migration enforces source/object inode identity and expected link counts, records failures in append-safe JSONL, and supports halt or reviewed continuation.
+- Migration revalidates source content before publication; portable final replacement still has a documented TOCTOU limitation.
+- Ingest reuses only verified objects with no existing visible reference; it still needs the planned size-only fast path and explicit failure-list/safe-verification options.
+- Ingest rejects symlinked source and destination parents before resolving paths.
 - There is no visible-reference report or sorted digest export.
 - Oxygen entry points use Python 3.10 type-syntax features, although Oxygen runs Python 3.9.
 
@@ -21,7 +21,7 @@ Run:
 make check
 ```
 
-Local tests do not replace Oxygen acceptance. The current test suite covers the existing implementation and must gain tests for streaming commits, link counts, fail lists, duplicate-reference handling, safe verification, reference reporting, and digest export.
+Local tests do not replace Oxygen acceptance. The current test suite covers streaming commits, link counts, fail lists, duplicate-reference handling, and publish races; reference reporting, digest export, and real Oxygen behavior remain outstanding.
 
 ## Required Oxygen acceptance
 

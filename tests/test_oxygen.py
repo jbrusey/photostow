@@ -4259,7 +4259,6 @@ def test_visible_files_excludes_symlinks(tmp_path: Path) -> None:
     assert visible_files(tmp_path, exclude=("*.jpg",)) == []
 
 
-
 def test_migrate_rejects_missing_nofollow_support(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -4309,6 +4308,29 @@ def test_visible_files_rejects_selection_outside_root(tmp_path: Path) -> None:
         visible_files(tmp_path, tmp_path.parent)
 
 
+def test_migrate_dry_run_discovers_before_applying_limit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "a.jpg").write_bytes(b"a")
+    (tmp_path / "b.jpg").write_bytes(b"b")
+    discovered = False
+
+    def walk(path: Path, onerror=None):
+        nonlocal discovered
+        yield str(path), [], ["a.jpg", "b.jpg"]
+        discovered = True
+
+    monkeypatch.setattr(oxygen.os, "walk", walk)
+    original_digest = oxygen._stable_digest
+
+    def digest(path: Path):
+        assert discovered
+        return original_digest(path)
+
+    monkeypatch.setattr(oxygen, "_stable_digest", digest)
+    assert migrate(tmp_path, dry_run=True, limit=1) == 1
+
+
 def test_migrate_reports_hash_progress_before_each_hash(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -4320,11 +4342,6 @@ def test_migrate_reports_hash_progress_before_each_hash(
     assert "hashing 1/1" in output
     assert not (tmp_path / ".photostow.lock").exists()
     assert not (tmp_path / ".objects").exists()
-
-
-
-
-
 
 
 def test_verify_objects_rejects_symlink_root_parent(tmp_path: Path) -> None:
@@ -4495,8 +4512,6 @@ def test_migrate_cli_reports_resolved_startup_paths(
     assert "target=2006 path=." in output
 
 
-
-
 def test_migrate_cli_reports_interrupt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -4608,8 +4623,6 @@ def test_migrate_cli_rejects_negative_limit(
     assert error.value.code == 2
 
 
-
-
 def test_migrate_cli_rejects_corrupt_existing_object(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -4674,28 +4687,6 @@ def test_migrate_cli_reports_migration_failure(
 
     assert migrate_main() == 1
     assert "oxygen-migrate failed: broken" in capsys.readouterr().err
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def test_migrate_cli_rejects_unsupported_jobs(
@@ -5595,6 +5586,25 @@ def test_ingest_rejects_concurrent_operation(tmp_path: Path) -> None:
             ingest(incoming, root / "photo.jpg", root)
 
 
+def test_ingest_rejects_existing_object_with_visible_reference(tmp_path: Path) -> None:
+    source = tmp_path / "source.jpg"
+    source.write_bytes(b"photo")
+    root = tmp_path / "archive"
+    root.mkdir()
+    destination = root / "photo.jpg"
+    object_root = root / ".objects"
+    digest = hashlib.sha256(b"photo").hexdigest()
+    target = object_path(root, digest, object_root)
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"photo")
+    visible = root / "existing.jpg"
+    os.link(target, visible)
+
+    with pytest.raises(ValueError, match="visible reference"):
+        ingest(source, destination, root, object_root)
+    assert not destination.exists()
+
+
 def test_ingest_same_digest_destination_is_noop(tmp_path: Path) -> None:
     incoming = tmp_path / "incoming.jpg"
     incoming.write_bytes(b"incoming")
@@ -5808,29 +5818,6 @@ def test_migrate_rejects_corrupt_existing_object(tmp_path: Path) -> None:
 
     with pytest.raises(OSError, match="does not match digest"):
         migrate(tmp_path)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def test_migrate_rejects_symlink_object_root(tmp_path: Path) -> None:
