@@ -642,7 +642,12 @@ def _migrate_locked(
 ) -> int:
     root = root.resolve()
     errors: list[str] = []
-    failure_list = failure_list or Path.cwd().resolve() / "migration-failures.jsonl"
+    if failure_list is None:
+        failure_list = Path.cwd().resolve() / "migration-failures.jsonl"
+    else:
+        if failure_list.is_symlink():
+            raise ValueError(f"failure list path is unsafe: {failure_list}")
+        failure_list = failure_list.resolve()
     records: (
         list[tuple[str, Path, os.stat_result]]
         | Iterator[tuple[str, Path, os.stat_result]]

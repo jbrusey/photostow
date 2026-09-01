@@ -5720,6 +5720,11 @@ def test_migrate_default_failure_list_resolves_working_directory_symlink(
 
     assert (real_home / "migration-failures.jsonl").is_file()
 
+    explicit = linked_home / "explicit-failures.jsonl"
+    with pytest.raises(OSError, match="unexpected link count"):
+        migrate(tmp_path, dry_run=False, failure_list=explicit)
+    assert (real_home / explicit.name).is_file()
+
 
 def test_migrate_continues_after_recorded_failure(tmp_path: Path) -> None:
     bad = tmp_path / "a-bad.jpg"
