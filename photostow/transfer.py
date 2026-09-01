@@ -17,6 +17,7 @@ _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 class HashedFile:
     path: Path
     digest: str
+    destination: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -92,7 +93,11 @@ def scan_cached(root: Path, cache: Path) -> list[HashedFile]:
     return list(iter_cached(root, cache))
 
 
-def plan_missing(files: list[HashedFile], oxygen_digests: set[str]) -> TransferPlan:
+def plan_missing(
+    files: list[HashedFile],
+    oxygen_digests: set[str],
+    destinations: dict[Path, Path] | None = None,
+) -> TransferPlan:
     by_digest: dict[str, list[Path]] = {}
     for record in files:
         by_digest.setdefault(record.digest, []).append(record.path)
@@ -102,7 +107,9 @@ def plan_missing(files: list[HashedFile], oxygen_digests: set[str]) -> TransferP
         if len(paths) > 1
     }
     selected = [
-        HashedFile(min(paths), digest)
+        HashedFile(
+            min(paths), digest, destinations.get(min(paths)) if destinations else None
+        )
         for digest, paths in sorted(by_digest.items())
         if digest not in oxygen_digests
     ]

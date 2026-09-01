@@ -106,6 +106,18 @@ def missing_library_assets(
     ]
 
 
+def library_destinations(library: Path) -> dict[Path, Path]:
+    destinations: dict[Path, Path] = {}
+    for asset in iter_assets(library):
+        if "/" in asset.filename or "\\" in asset.filename:
+            raise ValueError(
+                f"Photos asset filename is not a filename: {asset.filename}"
+            )
+        year = str(asset.created.year) if asset.created else "undated"
+        destinations[asset.path] = Path(year) / asset.filename
+    return destinations
+
+
 def earliest_created(assets: list[PhotoAsset]) -> datetime | None:
     dates = [asset.created for asset in assets if asset.created is not None]
     return min(dates) if dates else None

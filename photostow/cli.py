@@ -18,6 +18,7 @@ from photostow.core import hash_tree, missing_hash_records, parse_sha_lines
 from photostow.photos import (
     earliest_created,
     iter_assets,
+    library_destinations,
     library_hashes,
     missing_library_assets,
 )
@@ -54,16 +55,36 @@ def cmd_transfer_plan(args: argparse.Namespace) -> int:
                 raise ValueError(f"invalid Oxygen digest: {digest}")
             if digest:
                 oxygen_digests.add(digest)
+    destinations = (
+        library_destinations(Path(args.photos_library)) if args.photos_library else None
+    )
     duplicates: dict[str, list[Path]] = {}
+    destination_digests: dict[Path, str] = {}
     seen: set[str] = set()
     queued = 0
+    collisions = 0
     with Path(args.output).open("w", encoding="utf-8") as stream:
-        stream.write("sha256\tpath\n")
+        stream.write("sha256\tpath" + ("\tdestination" if destinations else "") + "\n")
         for record in iter_cached(Path(args.source_root), Path(args.cache)):
             paths = duplicates.setdefault(record.digest, [])
             paths.append(record.path)
+            destination = destinations.get(record.path) if destinations else None
+            if destinations and destination is None:
+                raise ValueError(f"file is not a Photos asset: {record.path}")
+            if destination is not None:
+                prior = destination_digests.setdefault(destination, record.digest)
+                if prior != record.digest:
+                    print(
+                        f"destination collision {destination}: {prior} vs {record.digest}",
+                        file=sys.stderr,
+                    )
+                    collisions += 1
+                    continue
             if record.digest not in oxygen_digests and record.digest not in seen:
-                stream.write(f"{record.digest}\t{record.path}\n")
+                line = f"{record.digest}\t{record.path}"
+                if destination is not None:
+                    line += f"\t{destination}"
+                stream.write(line + "\n")
                 seen.add(record.digest)
                 queued += 1
     for digest, paths in sorted(duplicates.items()):
@@ -71,7 +92,7 @@ def cmd_transfer_plan(args: argparse.Namespace) -> int:
             print(f"duplicate {digest}: {' | '.join(map(str, paths))}", file=sys.stderr)
     duplicate_count = sum(len(paths) > 1 for paths in duplicates.values())
     print(f"queued {queued} files", file=sys.stderr)
-    return 1 if duplicate_count else 0
+    return 1 if duplicate_count or collisions else 0
 
 
 def cmd_missing(args: argparse.Namespace) -> int:
@@ -243,6 +264,10 @@ def build_parser() -> argparse.ArgumentParser:
     transfer_parser.add_argument("oxygen_inventory")
     transfer_parser.add_argument("cache")
     transfer_parser.add_argument("output")
+    transfer_parser.add_argument(
+        "--photos-library",
+        help="derive YYYY/filename destinations from a Photos library",
+    )
     transfer_parser.set_defaults(func=cmd_transfer_plan)
 
     missing_parser = sub.add_parser(
