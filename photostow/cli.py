@@ -34,7 +34,7 @@ from photostow.remote import (
     update_remote_ledger,
     validate_source_paths,
 )
-from photostow.transfer import plan_missing, scan_cached
+from photostow.transfer import iter_cached
 
 
 def cmd_hash(args: argparse.Namespace) -> int:
@@ -44,6 +44,7 @@ def cmd_hash(args: argparse.Namespace) -> int:
     return 0
 
 
+# Build a resumable, duplicate-aware plan from the local hash cache.
 def cmd_transfer_plan(args: argparse.Namespace) -> int:
     oxygen_digests = set()
     with open(args.oxygen_inventory, encoding="utf-8") as stream:
@@ -53,15 +54,24 @@ def cmd_transfer_plan(args: argparse.Namespace) -> int:
                 raise ValueError(f"invalid Oxygen digest: {digest}")
             if digest:
                 oxygen_digests.add(digest)
-    files = scan_cached(Path(args.source_root), Path(args.cache))
-    plan = plan_missing(files, oxygen_digests)
+    duplicates: dict[str, list[Path]] = {}
+    seen: set[str] = set()
+    queued = 0
     with Path(args.output).open("w", encoding="utf-8") as stream:
         stream.write("sha256\tpath\n")
-        stream.writelines(f"{record.digest}\t{record.path}\n" for record in plan.files)
-    for digest, paths in sorted(plan.duplicates.items()):
-        print(f"duplicate {digest}: {' | '.join(map(str, paths))}", file=sys.stderr)
-    print(f"queued {len(plan.files)} files", file=sys.stderr)
-    return 1 if plan.duplicates else 0
+        for record in iter_cached(Path(args.source_root), Path(args.cache)):
+            paths = duplicates.setdefault(record.digest, [])
+            paths.append(record.path)
+            if record.digest not in oxygen_digests and record.digest not in seen:
+                stream.write(f"{record.digest}\t{record.path}\n")
+                seen.add(record.digest)
+                queued += 1
+    for digest, paths in sorted(duplicates.items()):
+        if len(paths) > 1:
+            print(f"duplicate {digest}: {' | '.join(map(str, paths))}", file=sys.stderr)
+    duplicate_count = sum(len(paths) > 1 for paths in duplicates.values())
+    print(f"queued {queued} files", file=sys.stderr)
+    return 1 if duplicate_count else 0
 
 
 def cmd_missing(args: argparse.Namespace) -> int:
