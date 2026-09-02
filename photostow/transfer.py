@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+import posixpath
 import re
+import shlex
+import shutil
+import subprocess
 import tempfile
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -10,6 +14,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from photostow.core import iter_files, sha256_file
+from photostow.remote import SSH
+
+RSYNC = shutil.which("rsync") or "rsync"
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 
@@ -76,6 +83,81 @@ def record_transfer(
         stream.write(json.dumps(record, ensure_ascii=False) + "\n")
         stream.flush()
         os.fsync(stream.fileno())
+
+
+def transfer_batch(
+    files: list[HashedFile],
+    source_root: Path,
+    host: str,
+    staging_root: str,
+    oxygen_root: str,
+    object_root: str,
+    state: Path,
+    completed: set[tuple[str, str]],
+) -> int:
+    pending = [
+        record
+        for record in files
+        if record.destination is not None
+        and (record.digest, str(record.destination)) not in completed
+    ]
+    if not pending:
+        return 0
+    relative: list[str] = []
+    for record in pending:
+        try:
+            relative.append(str(record.path.relative_to(source_root)))
+        except ValueError as error:
+            raise ValueError(
+                f"transfer source is outside root: {record.path}"
+            ) from error
+    payload = "".join(path + "\0" for path in relative).encode()
+    remote_staging = f"{host}:{shlex.quote(staging_root.rstrip('/') + '/')}"
+    subprocess.run(
+        [
+            RSYNC,
+            "-a",
+            "--from0",
+            "--files-from=-",
+            source_root.as_posix() + "/",
+            remote_staging,
+        ],
+        input=payload,
+        check=True,
+    )
+    completed_count = 0
+    for record, source_relative in zip(pending, relative):
+        destination = record.destination
+        assert destination is not None
+        remote_source = posixpath.join(staging_root, source_relative)
+        command = shlex.join(
+            [
+                "oxygen-ingest",
+                remote_source,
+                destination.as_posix(),
+                "--root",
+                oxygen_root,
+                "--object-root",
+                object_root,
+                "--safe-verify",
+            ]
+        )
+        try:
+            subprocess.run([*SSH, host, command], check=True)
+        except subprocess.CalledProcessError as error:
+            record_transfer(
+                state,
+                record.digest,
+                record.path,
+                destination,
+                "failed",
+                str(error),
+            )
+            continue
+        record_transfer(state, record.digest, record.path, destination)
+        completed.add((record.digest, str(destination)))
+        completed_count += 1
+    return completed_count
 
 
 def _fingerprint(path: Path) -> dict[str, int]:

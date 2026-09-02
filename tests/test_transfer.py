@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from photostow import transfer
 from photostow.core import sha256_file
 from photostow.transfer import (
     HashedFile,
@@ -8,6 +9,41 @@ from photostow.transfer import (
     record_transfer,
     scan_cached,
 )
+
+
+def test_transfer_batch_rsyncs_then_ingests_and_records(
+    tmp_path: Path, monkeypatch
+) -> None:
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    source = source_root / "photo.jpg"
+    source.write_bytes(b"photo")
+    digest = "a" * 64
+    record = HashedFile(source, digest, Path("2024/photo.jpg"))
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append((command, kwargs))
+
+    monkeypatch.setattr(transfer.subprocess, "run", run)
+    state = tmp_path / "state.jsonl"
+    assert (
+        transfer.transfer_batch(
+            [record],
+            source_root,
+            "oxygen",
+            "/tmp/stage",
+            "/var/services/photo",
+            "/volume1/photostow",
+            state,
+            set(),
+        )
+        == 1
+    )
+    assert len(calls) == 2
+    assert calls[0][0][0] == transfer.RSYNC
+    assert calls[1][0][0] == transfer.SSH[0]
+    assert (digest, "2024/photo.jpg") in transfer.completed_transfers(state)
 
 
 def test_transfer_state_is_durable_and_reloadable(tmp_path: Path) -> None:
