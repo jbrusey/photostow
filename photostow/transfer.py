@@ -6,6 +6,7 @@ import re
 import tempfile
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 from photostow.core import iter_files, sha256_file
@@ -24,6 +25,57 @@ class HashedFile:
 class TransferPlan:
     files: tuple[HashedFile, ...]
     duplicates: dict[str, tuple[Path, ...]]
+
+
+def completed_transfers(state: Path) -> set[tuple[str, str]]:
+    if state.is_symlink() or any(parent.is_symlink() for parent in state.parents):
+        raise ValueError(f"unsafe transfer state path: {state}")
+    completed: set[tuple[str, str]] = set()
+    if not state.exists():
+        return completed
+    with state.open(encoding="utf-8") as stream:
+        for line in stream:
+            record = json.loads(line)
+            if record.get("status") != "complete":
+                continue
+            digest = record.get("digest")
+            destination = record.get("destination")
+            if not isinstance(digest, str) or not _DIGEST.fullmatch(digest):
+                raise ValueError(f"invalid transfer state digest: {digest}")
+            if not isinstance(destination, str) or not destination:
+                raise ValueError("invalid transfer state destination")
+            completed.add((digest, destination))
+    return completed
+
+
+def record_transfer(
+    state: Path,
+    digest: str,
+    source: Path,
+    destination: Path,
+    status: str = "complete",
+    error: str | None = None,
+) -> None:
+    if not _DIGEST.fullmatch(digest):
+        raise ValueError(f"invalid transfer digest: {digest}")
+    if status not in {"complete", "failed"}:
+        raise ValueError(f"invalid transfer status: {status}")
+    if state.is_symlink() or any(parent.is_symlink() for parent in state.parents):
+        raise ValueError(f"unsafe transfer state path: {state}")
+    state.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "digest": digest,
+        "source": str(source),
+        "destination": str(destination),
+        "status": status,
+    }
+    if error is not None:
+        record["error"] = error
+    with state.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+        stream.flush()
+        os.fsync(stream.fileno())
 
 
 def _fingerprint(path: Path) -> dict[str, int]:

@@ -1,7 +1,24 @@
 from pathlib import Path
 
 from photostow.core import sha256_file
-from photostow.transfer import HashedFile, plan_missing, scan_cached
+from photostow.transfer import (
+    HashedFile,
+    completed_transfers,
+    plan_missing,
+    record_transfer,
+    scan_cached,
+)
+
+
+def test_transfer_state_is_durable_and_reloadable(tmp_path: Path) -> None:
+    state = tmp_path / "state.jsonl"
+    digest = "a" * 64
+    record_transfer(state, digest, Path("source.jpg"), Path("2024/source.jpg"))
+    record_transfer(
+        state, "b" * 64, Path("bad.jpg"), Path("2024/bad.jpg"), "failed", "network"
+    )
+
+    assert completed_transfers(state) == {(digest, "2024/source.jpg")}
 
 
 def test_scan_cached_reuses_unchanged_hash(tmp_path: Path, monkeypatch) -> None:
