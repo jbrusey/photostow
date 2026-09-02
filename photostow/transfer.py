@@ -7,6 +7,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -86,7 +87,8 @@ def record_transfer(
 
 
 def read_transfer_manifest(path: Path) -> Iterator[HashedFile]:
-    with path.open(encoding="utf-8") as stream:
+    stream = sys.stdin if str(path) == "-" else path.open(encoding="utf-8")
+    try:
         if next(stream, "").rstrip("\n") != "sha256\tpath\tdestination":
             raise ValueError("transfer manifest has an invalid header")
         for line in stream:
@@ -100,6 +102,9 @@ def read_transfer_manifest(path: Path) -> Iterator[HashedFile]:
             if destination_path.is_absolute() or ".." in destination_path.parts:
                 raise ValueError(f"transfer destination escapes root: {destination}")
             yield HashedFile(Path(source), digest, destination_path)
+    finally:
+        if stream is not sys.stdin:
+            stream.close()
 
 
 def transfer_batch(

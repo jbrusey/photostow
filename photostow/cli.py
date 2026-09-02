@@ -5,7 +5,9 @@ import re
 import shutil
 import signal
 import sys
+from contextlib import ExitStack
 from pathlib import Path
+from typing import TextIO
 
 from photostow.audit import (
     delete_duplicate_groups,
@@ -53,8 +55,8 @@ def cmd_hash(args: argparse.Namespace) -> int:
 # Build a resumable, duplicate-aware plan from the local hash cache.
 def cmd_transfer_plan(args: argparse.Namespace) -> int:
     oxygen_digests = set()
-    with open(args.oxygen_inventory, encoding="utf-8") as stream:
-        for line in stream:
+    with open(args.oxygen_inventory, encoding="utf-8") as inventory_stream:
+        for line in inventory_stream:
             digest = line.strip()
             if digest and not re.fullmatch(r"[0-9a-f]{64}", digest):
                 raise ValueError(f"invalid Oxygen digest: {digest}")
@@ -68,7 +70,12 @@ def cmd_transfer_plan(args: argparse.Namespace) -> int:
     seen: set[str] = set()
     queued = 0
     collisions = 0
-    with Path(args.output).open("w", encoding="utf-8") as stream:
+    with ExitStack() as stack:
+        stream: TextIO = (
+            sys.stdout
+            if args.output == "-"
+            else stack.enter_context(Path(args.output).open("w", encoding="utf-8"))
+        )
         stream.write("sha256\tpath" + ("\tdestination" if destinations else "") + "\n")
         for record in iter_cached(Path(args.source_root), Path(args.cache)):
             paths = duplicates.setdefault(record.digest, [])
@@ -90,6 +97,7 @@ def cmd_transfer_plan(args: argparse.Namespace) -> int:
                 if destination is not None:
                     line += f"\t{destination}"
                 stream.write(line + "\n")
+                stream.flush()
                 seen.add(record.digest)
                 queued += 1
     for digest, paths in sorted(duplicates.items()):
