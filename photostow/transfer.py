@@ -85,6 +85,23 @@ def record_transfer(
         os.fsync(stream.fileno())
 
 
+def read_transfer_manifest(path: Path) -> Iterator[HashedFile]:
+    with path.open(encoding="utf-8") as stream:
+        if next(stream, "").rstrip("\n") != "sha256\tpath\tdestination":
+            raise ValueError("transfer manifest has an invalid header")
+        for line in stream:
+            fields = line.rstrip("\n").split("\t")
+            if len(fields) != 3:
+                raise ValueError("transfer manifest row must have three columns")
+            digest, source, destination = fields
+            if not _DIGEST.fullmatch(digest):
+                raise ValueError(f"invalid transfer digest: {digest}")
+            destination_path = Path(destination)
+            if destination_path.is_absolute() or ".." in destination_path.parts:
+                raise ValueError(f"transfer destination escapes root: {destination}")
+            yield HashedFile(Path(source), digest, destination_path)
+
+
 def transfer_batch(
     files: list[HashedFile],
     source_root: Path,
@@ -113,18 +130,32 @@ def transfer_batch(
             ) from error
     payload = "".join(path + "\0" for path in relative).encode()
     remote_staging = f"{host}:{shlex.quote(staging_root.rstrip('/') + '/')}"
-    subprocess.run(
-        [
-            RSYNC,
-            "-a",
-            "--from0",
-            "--files-from=-",
-            source_root.as_posix() + "/",
-            remote_staging,
-        ],
-        input=payload,
-        check=True,
-    )
+    try:
+        subprocess.run(
+            [
+                RSYNC,
+                "-a",
+                "--from0",
+                "--files-from=-",
+                source_root.as_posix() + "/",
+                remote_staging,
+            ],
+            input=payload,
+            check=True,
+        )
+    except subprocess.CalledProcessError as error:
+        for record in pending:
+            destination = record.destination
+            assert destination is not None
+            record_transfer(
+                state,
+                record.digest,
+                record.path,
+                destination,
+                "failed",
+                str(error),
+            )
+        return 0
     completed_count = 0
     for record, source_relative in zip(pending, relative):
         destination = record.destination

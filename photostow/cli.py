@@ -35,7 +35,12 @@ from photostow.remote import (
     update_remote_ledger,
     validate_source_paths,
 )
-from photostow.transfer import iter_cached
+from photostow.transfer import (
+    completed_transfers,
+    iter_cached,
+    read_transfer_manifest,
+    transfer_batch,
+)
 
 
 def cmd_hash(args: argparse.Namespace) -> int:
@@ -93,6 +98,59 @@ def cmd_transfer_plan(args: argparse.Namespace) -> int:
     duplicate_count = sum(len(paths) > 1 for paths in duplicates.values())
     print(f"queued {queued} files", file=sys.stderr)
     return 1 if duplicate_count or collisions else 0
+
+
+def cmd_transfer_run(args: argparse.Namespace) -> int:
+    if args.batch_size < 1:
+        raise ValueError("batch size must be positive")
+    completed = completed_transfers(Path(args.state))
+    batch = []
+    transferred = 0
+    failed = 0
+    for record in read_transfer_manifest(Path(args.manifest)):
+        batch.append(record)
+        if len(batch) < args.batch_size:
+            continue
+        pending = [
+            item
+            for item in batch
+            if item.destination is not None
+            and (item.digest, str(item.destination)) not in completed
+        ]
+        batch_transferred = transfer_batch(
+            pending,
+            Path(args.source_root),
+            args.host,
+            args.staging_root,
+            args.oxygen_root,
+            args.object_root,
+            Path(args.state),
+            completed,
+        )
+        transferred += batch_transferred
+        failed += len(pending) - batch_transferred
+        batch = []
+    if batch:
+        pending = [
+            item
+            for item in batch
+            if item.destination is not None
+            and (item.digest, str(item.destination)) not in completed
+        ]
+        batch_transferred = transfer_batch(
+            pending,
+            Path(args.source_root),
+            args.host,
+            args.staging_root,
+            args.oxygen_root,
+            args.object_root,
+            Path(args.state),
+            completed,
+        )
+        transferred += batch_transferred
+        failed += len(pending) - batch_transferred
+    print(f"transferred {transferred} files; failures {failed}", file=sys.stderr)
+    return 1 if failed else 0
 
 
 def cmd_missing(args: argparse.Namespace) -> int:
@@ -269,6 +327,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="derive YYYY/filename destinations from a Photos library",
     )
     transfer_parser.set_defaults(func=cmd_transfer_plan)
+
+    run_parser = sub.add_parser(
+        "transfer-run", help="rsync and ingest a transfer manifest"
+    )
+    run_parser.add_argument("manifest")
+    run_parser.add_argument("source_root")
+    run_parser.add_argument("host")
+    run_parser.add_argument("staging_root")
+    run_parser.add_argument("oxygen_root")
+    run_parser.add_argument("object_root")
+    run_parser.add_argument("state")
+    run_parser.add_argument("--batch-size", type=int, default=50)
+    run_parser.set_defaults(func=cmd_transfer_run)
 
     missing_parser = sub.add_parser(
         "missing", help="list source hashes absent from archive"
