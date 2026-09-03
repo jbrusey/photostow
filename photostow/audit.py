@@ -43,11 +43,12 @@ def remote_files(host: str, root: str) -> list[RemoteFile]:
     root = root.rstrip("/") + "/"
     script = (
         f"find {shlex.quote(root)} {REMOTE_EXCLUDES}"
-        "-type f -exec stat -c '%s %n\\0' {} +"
+        "-type f -exec stat -c '%s %n' {} +"
     )
     out = ssh_stdout(host, script)
     files = []
-    for record in out.split("\0"):
+    records = out.split("\0") if "\0" in out else out.splitlines()
+    for record in records:
         if not record:
             continue
         size, separator, path = record.partition(" ")
@@ -112,10 +113,28 @@ def duplicate_groups(
     return [sort_duplicate_group(paths) for paths in by_hash.values() if len(paths) > 1]
 
 
+def pixette_removed_variant(path: str) -> str:
+    stem, extension = posixpath.splitext(path)
+    suffix = "_pixette_removed"
+    return path if stem.endswith(suffix) else stem + suffix + extension
+
+
 def remote_duplicate_groups(host: str, root: str, ledger: Path) -> list[list[str]]:
     current = {file.path for file in remote_files(host, root)}
     lines = ledger.read_text(encoding="utf-8").splitlines()
-    return duplicate_groups(lines, current)
+    expanded = []
+    seen: set[tuple[str, str]] = set()
+    for digest, path in parse_sha_lines(lines):
+        candidates = [path]
+        variant = pixette_removed_variant(path)
+        if variant != path:
+            candidates.append(variant)
+        for candidate in candidates:
+            pair = (digest, candidate)
+            if candidate in current and pair not in seen:
+                expanded.append(f"{digest}  {candidate}")
+                seen.add(pair)
+    return duplicate_groups(expanded, current)
 
 
 def parse_duplicate_group_file(path: Path) -> list[list[str]]:

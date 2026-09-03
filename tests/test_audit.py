@@ -47,7 +47,7 @@ def test_remote_files_shell_quotes_root(monkeypatch: pytest.MonkeyPatch) -> None
     assert "-path '*/@eaDir' -prune -o" in commands[0]
     assert "-path '*/.objects' -prune -o" in commands[0]
     assert "-name 'photos-oxygen-sha*' -prune -o" in commands[0]
-    assert "stat -c '%s %n\\0'" in commands[0]
+    assert "stat -c '%s %n'" in commands[0]
     assert "-exec stat" in commands[0]
     assert "xargs" not in commands[0]
 
@@ -205,6 +205,38 @@ def test_unknown_files_reports_paths_absent_from_ledger() -> None:
     ledger = ["abc  /var/services/photo/2023/old.jpg"]
 
     assert unknown_files(remote, ledger) == remote
+
+
+def test_pixette_removed_variant_is_inserted_before_extension() -> None:
+    assert (
+        audit.pixette_removed_variant("/photo/a.jpeg")
+        == "/photo/a_pixette_removed.jpeg"
+    )
+    assert audit.pixette_removed_variant("/photo/a") == "/photo/a_pixette_removed"
+    assert audit.pixette_removed_variant("/photo/a_pixette_removed.jpeg") == (
+        "/photo/a_pixette_removed.jpeg"
+    )
+
+
+def test_remote_duplicate_groups_includes_pixette_removed_variant(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    digest = "a" * 64
+    keep = "/var/services/photo/2019/a.jpeg"
+    base = "/var/services/photo/to-import/a.jpeg"
+    removed = "/var/services/photo/to-import/a_pixette_removed.jpeg"
+    (tmp_path / "ledger").write_text(
+        f"{digest}  {keep}\n{digest}  {base}\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        audit,
+        "remote_files",
+        lambda host, root: [RemoteFile(keep, 1), RemoteFile(removed, 1)],
+    )
+
+    assert audit.remote_duplicate_groups(
+        "oxygen", "/var/services/photo", tmp_path / "ledger"
+    ) == [[removed, keep]]
 
 
 def test_duplicate_groups_by_hash() -> None:
