@@ -489,6 +489,14 @@ def _ensure_object(source: Path, target: Path, digest: str) -> None:
         raise
 
 
+def _canonical_archive_path(path: str) -> str:
+    resolved = Path(path).resolve()
+    archive = DEFAULT_ARCHIVE_ROOT.resolve()
+    if resolved == archive or archive in resolved.parents:
+        return str(DEFAULT_ARCHIVE_ROOT / resolved.relative_to(archive))
+    return path
+
+
 def _load_migration_state(path: Path) -> dict[str, str]:
     if not path.is_file() or path.is_symlink():
         return {}
@@ -535,10 +543,15 @@ def _merge_migration_state_into_ledger(state: Path, ledger: Path) -> None:
     rows = {}
     if ledger.is_file():
         rows = {
-            path: digest
+            _canonical_archive_path(path): digest
             for digest, path in parse_sha_lines(ledger.read_text().splitlines())
         }
-    rows.update(_load_migration_state(state))
+    rows.update(
+        {
+            _canonical_archive_path(path): digest
+            for path, digest in _load_migration_state(state).items()
+        }
+    )
     payload = "".join(f"{digest}  {path}\n" for path, digest in sorted(rows.items()))
     ledger.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary_name = tempfile.mkstemp(dir=ledger.parent, prefix=f".{ledger.name}.")
@@ -719,13 +732,12 @@ def _migrate_locked(
     if ledger is None and root == DEFAULT_ARCHIVE_ROOT.resolve():
         ledger = root / "photos-oxygen-sha"
     if ledger is not None and ledger.is_file() and not ledger.is_symlink():
-        known_digests = {
-            path: digest
-            for digest, path in parse_sha_lines(
-                ledger.read_text(encoding="utf-8").splitlines()
-            )
-            if re.fullmatch(r"[0-9a-f]{64}", digest)
-        }
+        for digest, ledger_path in parse_sha_lines(
+            ledger.read_text(encoding="utf-8").splitlines()
+        ):
+            if re.fullmatch(r"[0-9a-f]{64}", digest):
+                known_digests[ledger_path] = digest
+                known_digests[str(Path(ledger_path).resolve())] = digest
     errors: list[str] = []
     if failure_list is None:
         failure_list = Path.cwd().resolve() / "migration-failures.jsonl"
