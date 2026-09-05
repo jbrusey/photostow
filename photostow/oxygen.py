@@ -15,8 +15,9 @@ from pathlib import Path
 from typing import Iterator
 
 from photostow.core import parse_sha_lines, sha256_file
+from photostow.paths import ARCHIVE_ROOT, archive_path_aliases, canonical_archive_path
 
-DEFAULT_ARCHIVE_ROOT = Path("/var/services/photo")
+DEFAULT_ARCHIVE_ROOT = ARCHIVE_ROOT
 DEFAULT_OBJECT_ROOT = Path("/volume1/photostow")
 
 
@@ -489,14 +490,6 @@ def _ensure_object(source: Path, target: Path, digest: str) -> None:
         raise
 
 
-def _canonical_archive_path(path: str) -> str:
-    resolved = Path(path).resolve()
-    archive = DEFAULT_ARCHIVE_ROOT.resolve()
-    if resolved == archive or archive in resolved.parents:
-        return str(DEFAULT_ARCHIVE_ROOT / resolved.relative_to(archive))
-    return path
-
-
 def _load_migration_state(path: Path) -> dict[str, str]:
     if not path.is_file() or path.is_symlink():
         return {}
@@ -510,7 +503,8 @@ def _load_migration_state(path: Path) -> dict[str, str]:
                 and isinstance(item.get("digest"), str)
                 and re.fullmatch(r"[0-9a-f]{64}", item["digest"])
             ):
-                records[item["path"]] = item["digest"]
+                for alias in archive_path_aliases(item["path"]):
+                    records[alias] = item["digest"]
     return records
 
 
@@ -543,12 +537,12 @@ def _merge_migration_state_into_ledger(state: Path, ledger: Path) -> None:
     rows = {}
     if ledger.is_file():
         rows = {
-            _canonical_archive_path(path): digest
+            canonical_archive_path(path): digest
             for digest, path in parse_sha_lines(ledger.read_text().splitlines())
         }
     rows.update(
         {
-            _canonical_archive_path(path): digest
+            canonical_archive_path(path): digest
             for path, digest in _load_migration_state(state).items()
         }
     )
@@ -736,8 +730,8 @@ def _migrate_locked(
             ledger.read_text(encoding="utf-8").splitlines()
         ):
             if re.fullmatch(r"[0-9a-f]{64}", digest):
-                known_digests[ledger_path] = digest
-                known_digests[str(Path(ledger_path).resolve())] = digest
+                for alias in archive_path_aliases(ledger_path):
+                    known_digests[alias] = digest
     errors: list[str] = []
     if failure_list is None:
         failure_list = Path.cwd().resolve() / "migration-failures.jsonl"

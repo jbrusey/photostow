@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from photostow.core import parse_sha_lines
+from photostow.paths import canonical_archive_path
 from photostow.remote import (
     REMOTE_EXCLUDES,
     SSH,
@@ -120,11 +121,12 @@ def pixette_removed_variant(path: str) -> str:
 
 
 def remote_duplicate_groups(host: str, root: str, ledger: Path) -> list[list[str]]:
-    current = {file.path for file in remote_files(host, root)}
+    current = {canonical_archive_path(file.path) for file in remote_files(host, root)}
     lines = ledger.read_text(encoding="utf-8").splitlines()
     expanded = []
     seen: set[tuple[str, str]] = set()
-    for digest, path in parse_sha_lines(lines):
+    for digest, raw_path in parse_sha_lines(lines):
+        path = canonical_archive_path(raw_path)
         candidates = [path]
         variant = pixette_removed_variant(path)
         if variant != path:
