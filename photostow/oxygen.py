@@ -489,6 +489,70 @@ def _ensure_object(source: Path, target: Path, digest: str) -> None:
         raise
 
 
+def _load_migration_state(path: Path) -> dict[str, str]:
+    if not path.is_file() or path.is_symlink():
+        return {}
+    records: dict[str, str] = {}
+    with path.open(encoding="utf-8") as stream:
+        for line in stream:
+            item = json.loads(line)
+            if (
+                isinstance(item, dict)
+                and isinstance(item.get("path"), str)
+                and isinstance(item.get("digest"), str)
+                and re.fullmatch(r"[0-9a-f]{64}", item["digest"])
+            ):
+                records[item["path"]] = item["digest"]
+    return records
+
+
+def _record_migration_success(
+    path: Path, source_stat: os.stat_result, digest: str, state: Path
+) -> None:
+    if state.is_symlink() or any(parent.is_symlink() for parent in state.parents):
+        raise ValueError(f"migration state path is unsafe: {state}")
+    state.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "path": str(path),
+        "digest": digest,
+        "device": source_stat.st_dev,
+        "inode": source_stat.st_ino,
+        "size": source_stat.st_size,
+        "mtime_ns": source_stat.st_mtime_ns,
+    }
+    with state.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
+def _merge_migration_state_into_ledger(state: Path, ledger: Path) -> None:
+    if not state.is_file():
+        return
+    if ledger.is_symlink() or any(parent.is_symlink() for parent in ledger.parents):
+        raise ValueError(f"ledger path is unsafe: {ledger}")
+    rows = {}
+    if ledger.is_file():
+        rows = {
+            path: digest
+            for digest, path in parse_sha_lines(ledger.read_text().splitlines())
+        }
+    rows.update(_load_migration_state(state))
+    payload = "".join(f"{digest}  {path}\n" for path, digest in sorted(rows.items()))
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary_name = tempfile.mkstemp(dir=ledger.parent, prefix=f".{ledger.name}.")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary_name, ledger)
+    except BaseException:
+        os.unlink(temporary_name)
+        raise
+
+
 def _record_failure(
     failure_list: Path,
     root: Path,
@@ -606,6 +670,7 @@ def migrate(
     failure_list: Path | None = None,
     continue_on_error: bool = False,
     ledger: Path | None = None,
+    state: Path | None = None,
 ) -> int:
     if limit is not None and type(limit) is not int:
         raise ValueError("limit must be a nonnegative integer")
@@ -626,6 +691,7 @@ def migrate(
             failure_list,
             continue_on_error,
             ledger,
+            state,
         )
 
 
@@ -642,9 +708,14 @@ def _migrate_locked(
     failure_list: Path | None = None,
     continue_on_error: bool = False,
     ledger: Path | None = None,
+    state: Path | None = None,
 ) -> int:
     root = root.resolve()
     known_digests: dict[str, str] = {}
+    if state is None and root == DEFAULT_ARCHIVE_ROOT.resolve():
+        state = Path.cwd().resolve() / "migration-state.jsonl"
+    if state is not None:
+        known_digests.update(_load_migration_state(state))
     if ledger is None and root == DEFAULT_ARCHIVE_ROOT.resolve():
         ledger = root / "photos-oxygen-sha"
     if ledger is not None and ledger.is_file() and not ledger.is_symlink():
@@ -873,6 +944,8 @@ def _migrate_locked(
             if streaming:
                 _check_resources(root, 1)
             _process_record(root, object_root, digest, path, dry_run, verbose)
+            if not dry_run and state is not None:
+                _record_migration_success(path, path.stat(), digest, state)
             processed += 1
             if streaming and verbose:
                 print(f"committed {path}", flush=True)
@@ -884,6 +957,8 @@ def _migrate_locked(
                 break
     if errors:
         raise OSError("migration failed: " + "; ".join(errors))
+    if not dry_run and state is not None and ledger is not None:
+        _merge_migration_state_into_ledger(state, ledger)
     if streaming:
         return processed
     assert isinstance(records, list)

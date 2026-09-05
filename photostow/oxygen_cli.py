@@ -25,6 +25,7 @@ def main() -> int:
     parser.add_argument(
         "--ledger", type=Path, help="path snapshot used for already-migrated fast path"
     )
+    parser.add_argument("--state", type=Path, help="durable migration progress state")
     parser.add_argument(
         "--manifest", type=Path, help="write reviewed dry-run selection"
     )
@@ -121,6 +122,7 @@ def main() -> int:
             failure_list=args.failure_list,
             continue_on_error=args.continue_on_error,
             ledger=args.ledger,
+            state=args.state,
         )
     except KeyboardInterrupt:
         print("oxygen-migrate interrupted; no completion summary", file=sys.stderr)
