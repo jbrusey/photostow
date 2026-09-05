@@ -733,6 +733,7 @@ def _migrate_locked(
                 for alias in archive_path_aliases(ledger_path):
                     known_digests[alias] = digest
     errors: list[str] = []
+    state_changed = False
     if failure_list is None:
         failure_list = Path.cwd().resolve() / "migration-failures.jsonl"
     else:
@@ -950,8 +951,10 @@ def _migrate_locked(
             if streaming:
                 _check_resources(root, 1)
             _process_record(root, object_root, digest, path, dry_run, verbose)
-            if not dry_run and state is not None:
+            if not dry_run and state is not None and str(path) not in known_digests:
                 _record_migration_success(path, path.stat(), digest, state)
+                known_digests[str(path)] = digest
+                state_changed = True
             processed += 1
             if streaming and verbose:
                 print(f"committed {path}", flush=True)
@@ -963,7 +966,8 @@ def _migrate_locked(
                 break
     if errors:
         raise OSError("migration failed: " + "; ".join(errors))
-    if not dry_run and state is not None and ledger is not None:
+    if not dry_run and state_changed and ledger is not None:
+        assert state is not None
         _merge_migration_state_into_ledger(state, ledger)
     if streaming:
         return processed
