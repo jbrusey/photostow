@@ -596,6 +596,7 @@ def _process_record(
     path: Path,
     dry_run: bool,
     verbose: bool,
+    fast_path: bool = False,
 ) -> None:
     if path.is_symlink():
         raise OSError(f"migration path is a symlink: {path}")
@@ -607,7 +608,8 @@ def _process_record(
         if parent.is_symlink():
             raise OSError(f"object path parent is a symlink: {parent}")
     if obj.exists():
-        _verify_object(obj, digest)
+        if not fast_path:
+            _verify_object(obj, digest)
         if os.path.samefile(path, obj):
             if path.stat().st_nlink != 2:
                 raise OSError(
@@ -737,6 +739,7 @@ def _migrate_locked(
                 for alias in archive_path_aliases(ledger_path):
                     known_digests[alias] = digest
     errors: list[str] = []
+    fast_paths: set[Path] = set()
     state_changed = False
     if failure_list is None:
         failure_list = Path.cwd().resolve() / "migration-failures.jsonl"
@@ -883,6 +886,7 @@ def _migrate_locked(
                                 and not object_file.is_symlink()
                                 and os.path.samefile(path, object_file)
                             ):
+                                fast_paths.add(path)
                                 yield digest, path, stat
                                 continue
                         if verbose:
@@ -956,7 +960,15 @@ def _migrate_locked(
         try:
             if streaming:
                 _check_resources(root, 1)
-            _process_record(root, object_root, digest, path, dry_run, verbose)
+            _process_record(
+                root,
+                object_root,
+                digest,
+                path,
+                dry_run,
+                verbose,
+                path in fast_paths,
+            )
             if not dry_run and state is not None and str(path) not in known_digests:
                 _record_migration_success(path, path.stat(), digest, state)
                 known_digests[str(path)] = digest
