@@ -4331,6 +4331,22 @@ def test_migrate_dry_run_discovers_before_applying_limit(
     assert migrate(tmp_path, dry_run=True, limit=1) == 1
 
 
+def test_migrate_skips_rehash_for_ledger_verified_hardlink(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    photo = tmp_path / "photo.jpg"
+    photo.write_bytes(b"photo")
+    ledger = tmp_path / "photos-oxygen-sha"
+    assert migrate(tmp_path, dry_run=False, ledger=ledger) == 1
+    digest = hashlib.sha256(b"photo").hexdigest()
+    ledger.write_text(f"{digest}  {photo}\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        oxygen, "_stable_digest", lambda path: pytest.fail("unexpected rehash")
+    )
+    assert migrate(tmp_path, dry_run=False, ledger=ledger) == 1
+
+
 def test_migrate_reports_hash_progress_before_each_hash(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

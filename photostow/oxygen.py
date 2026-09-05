@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
-from photostow.core import sha256_file
+from photostow.core import parse_sha_lines, sha256_file
 
 DEFAULT_ARCHIVE_ROOT = Path("/var/services/photo")
 DEFAULT_OBJECT_ROOT = Path("/volume1/photostow")
@@ -605,6 +605,7 @@ def migrate(
     verbose: bool = False,
     failure_list: Path | None = None,
     continue_on_error: bool = False,
+    ledger: Path | None = None,
 ) -> int:
     if limit is not None and type(limit) is not int:
         raise ValueError("limit must be a nonnegative integer")
@@ -624,6 +625,7 @@ def migrate(
             verbose,
             failure_list,
             continue_on_error,
+            ledger,
         )
 
 
@@ -639,8 +641,20 @@ def _migrate_locked(
     verbose: bool = False,
     failure_list: Path | None = None,
     continue_on_error: bool = False,
+    ledger: Path | None = None,
 ) -> int:
     root = root.resolve()
+    known_digests: dict[str, str] = {}
+    if ledger is None and root == DEFAULT_ARCHIVE_ROOT.resolve():
+        ledger = root / "photos-oxygen-sha"
+    if ledger is not None and ledger.is_file() and not ledger.is_symlink():
+        known_digests = {
+            path: digest
+            for digest, path in parse_sha_lines(
+                ledger.read_text(encoding="utf-8").splitlines()
+            )
+            if re.fullmatch(r"[0-9a-f]{64}", digest)
+        }
     errors: list[str] = []
     if failure_list is None:
         failure_list = Path.cwd().resolve() / "migration-failures.jsonl"
@@ -777,6 +791,18 @@ def _migrate_locked(
                     if verbose:
                         print(f"hashing {index} {path}", flush=True)
                     try:
+                        digest = known_digests.get(str(path))
+                        stat = path.stat()
+                        if digest is not None:
+                            object_file = object_path(root, digest, object_root)
+                            if (
+                                stat.st_nlink == 2
+                                and object_file.is_file()
+                                and not object_file.is_symlink()
+                                and os.path.samefile(path, object_file)
+                            ):
+                                yield digest, path, stat
+                                continue
                         digest, stat = _stable_digest(path)
                     except OSError as error:
                         reason = str(error)

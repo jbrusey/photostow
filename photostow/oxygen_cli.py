@@ -23,6 +23,9 @@ def main() -> int:
     parser.add_argument("--limit", type=int, help="process at most N files")
     parser.add_argument("--object-root", type=Path, help="content object directory")
     parser.add_argument(
+        "--ledger", type=Path, help="path snapshot used for already-migrated fast path"
+    )
+    parser.add_argument(
         "--manifest", type=Path, help="write reviewed dry-run selection"
     )
     parser.add_argument(
@@ -117,6 +120,7 @@ def main() -> int:
             verbose=args.verbose,
             failure_list=args.failure_list,
             continue_on_error=args.continue_on_error,
+            ledger=args.ledger,
         )
     except KeyboardInterrupt:
         print("oxygen-migrate interrupted; no completion summary", file=sys.stderr)
