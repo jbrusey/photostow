@@ -88,15 +88,18 @@ def iter_visible_files(
         if (
             selected.is_symlink()
             or selected.name.startswith(".afpDeleted")
-            or selected.name in {".DS_Store", ".photostow.lock"}
+            or selected.name in {".DS_Store", ".photostow.lock", "oxygen-sha"}
             or any(fnmatch.fnmatch(selected.name, pattern) for pattern in exclude)
         ):
             return
-        if selected.name.startswith("photos-oxygen-sha"):
+        if (
+            selected.name.startswith("photos-oxygen-sha")
+            or selected.name == "oxygen-sha"
+        ):
             return
         yield selected
         return
-    if selected.name in {"@eaDir", ".objects", "._DAV"} or any(
+    if selected.name in {"@eaDir", ".objects", "._DAV", "oxygen-sha"} or any(
         fnmatch.fnmatch(selected.name, pattern) for pattern in exclude
     ):
         return
@@ -125,7 +128,7 @@ def iter_visible_files(
             if (
                 not path.name.startswith("photos-oxygen-sha")
                 and not path.name.startswith(".afpDeleted")
-                and path.name not in {".DS_Store", ".photostow.lock"}
+                and path.name not in {".DS_Store", ".photostow.lock", "oxygen-sha"}
                 and not path.is_symlink()
                 and not any(fnmatch.fnmatch(name, pattern) for pattern in exclude)
             ):
@@ -719,12 +722,13 @@ def _migrate_locked(
 ) -> int:
     root = root.resolve()
     known_digests: dict[str, str] = {}
+    configured_object_root = (object_root or default_object_root(root)).resolve()
     if state is None and root == DEFAULT_ARCHIVE_ROOT.resolve():
-        state = Path.cwd().resolve() / "migration-state.jsonl"
+        state = configured_object_root / "ledger" / "migration-state.jsonl"
     if state is not None:
         known_digests.update(_load_migration_state(state))
     if ledger is None and root == DEFAULT_ARCHIVE_ROOT.resolve():
-        ledger = root / "photos-oxygen-sha"
+        ledger = configured_object_root / "ledger" / "photos-oxygen-sha"
     if ledger is not None and ledger.is_file() and not ledger.is_symlink():
         for digest, ledger_path in parse_sha_lines(
             ledger.read_text(encoding="utf-8").splitlines()
@@ -867,7 +871,7 @@ def _migrate_locked(
                     if limit is not None and index > limit:
                         break
                     if verbose:
-                        print(f"hashing {index} {path}", flush=True)
+                        print(f"checking {index} {path}", flush=True)
                     try:
                         digest = known_digests.get(str(path))
                         stat = path.stat()
@@ -881,6 +885,8 @@ def _migrate_locked(
                             ):
                                 yield digest, path, stat
                                 continue
+                        if verbose:
+                            print(f"hashing {index} {path}", flush=True)
                         digest, stat = _stable_digest(path)
                     except OSError as error:
                         reason = str(error)

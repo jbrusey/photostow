@@ -1,6 +1,6 @@
 # photostow
 
-Archive Photos.app originals to a Synology photo share without trusting filenames or dates. The archive truth is SHA-256 content hashes stored in `photos-oxygen-sha`.
+Archive Photos.app originals to a Synology photo share without trusting filenames or dates. The archive snapshot is `photos-oxygen-sha`; it lives with its backups under `/volume1/photostow/ledger`, outside the Photos tree.
 
 ## Typical flow
 
@@ -67,7 +67,7 @@ Run this before comparing a laptop Photos library.
 
 ### `make install-oxygen-ledger`
 
-Copies the local `photos-oxygen-sha` back to oxygen as `/var/services/photo/photos-oxygen-sha`. Before replacing it, oxygen rotates compressed backups:
+Copies the local `photos-oxygen-sha` back to oxygen as `/volume1/photostow/ledger/photos-oxygen-sha`. Before replacing it, oxygen rotates compressed backups:
 
 ```text
 photos-oxygen-sha.1.gz

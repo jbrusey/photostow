@@ -6700,7 +6700,9 @@ def test_visible_files_selected_file_respects_excluded_root(tmp_path: Path) -> N
     assert visible_files(tmp_path, selected=selected, excluded_root=excluded) == []
 
 
-@pytest.mark.parametrize("name", [".DS_Store", ".photostow.lock", "photos-oxygen-sha"])
+@pytest.mark.parametrize(
+    "name", [".DS_Store", ".photostow.lock", "photos-oxygen-sha", "oxygen-sha"]
+)
 def test_visible_files_selected_file_filters_reserved_names(
     tmp_path: Path, name: str
 ) -> None:

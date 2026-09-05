@@ -5,7 +5,7 @@ PHOTOS_LIBRARY ?= $(HOME)/Pictures/Photos Library.photoslibrary
 PHOTOS_ORIGINALS ?= $(PHOTOS_LIBRARY)/originals
 REVIEW_DIR ?= review
 DUPLICATE_REPORT ?= duplicate-groups.txt
-OXYGEN_LEDGER_REMOTE ?= $(OXYGEN_DIR)/photos-oxygen-sha
+OXYGEN_LEDGER_REMOTE ?= /volume1/photostow/ledger/photos-oxygen-sha
 LEDGER_BACKUPS ?= 5
 
 .PHONY: test lint format typecheck check review update-oxygen-ledger install-oxygen-ledger prune-oxygen-ledger missing duplicate-groups delete-duplicates stage-review archive-reviewed clean
