@@ -15,7 +15,11 @@ from pathlib import Path
 from typing import Iterator
 
 from photostow.core import parse_sha_lines, sha256_file
-from photostow.paths import ARCHIVE_ROOT, archive_path_aliases, canonical_archive_path
+from photostow.paths import (
+    ARCHIVE_ROOT,
+    canonical_archive_path,
+    resolved_archive_path,
+)
 
 DEFAULT_ARCHIVE_ROOT = ARCHIVE_ROOT
 DEFAULT_OBJECT_ROOT = Path("/volume1/photostow")
@@ -506,8 +510,7 @@ def _load_migration_state(path: Path) -> dict[str, str]:
                 and isinstance(item.get("digest"), str)
                 and re.fullmatch(r"[0-9a-f]{64}", item["digest"])
             ):
-                for alias in archive_path_aliases(item["path"]):
-                    records[alias] = item["digest"]
+                records[resolved_archive_path(item["path"])] = item["digest"]
     return records
 
 
@@ -736,8 +739,7 @@ def _migrate_locked(
             ledger.read_text(encoding="utf-8").splitlines()
         ):
             if re.fullmatch(r"[0-9a-f]{64}", digest):
-                for alias in archive_path_aliases(ledger_path):
-                    known_digests[alias] = digest
+                known_digests[resolved_archive_path(ledger_path)] = digest
     errors: list[str] = []
     fast_paths: set[Path] = set()
     state_changed = False

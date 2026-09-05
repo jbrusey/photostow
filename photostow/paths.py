@@ -27,14 +27,21 @@ def canonical_archive_path(path: str | Path) -> str:
     return value
 
 
+def resolved_archive_path(path: str | Path) -> str:
+    value = str(path)
+    archive_name = str(ARCHIVE_ROOT)
+    resolved_archive = _resolved_archive_name(archive_name)
+    if value == archive_name or value.startswith(archive_name + "/"):
+        return resolved_archive + value[len(archive_name) :]
+    if value == resolved_archive or value.startswith(resolved_archive + "/"):
+        return value
+    return str(Path(value).resolve())
+
+
 def archive_path_aliases(path: str | Path) -> set[str]:
     """Return persisted and resolved spellings accepted for an archive path."""
     value = str(path)
     canonical = canonical_archive_path(value)
     aliases = {value, canonical}
-    if canonical == str(ARCHIVE_ROOT) or canonical.startswith(str(ARCHIVE_ROOT) + "/"):
-        resolved_archive = _resolved_archive_name(str(ARCHIVE_ROOT))
-        aliases.add(resolved_archive + canonical[len(str(ARCHIVE_ROOT)) :])
-    else:
-        aliases.add(str(Path(value).resolve()))
+    aliases.add(resolved_archive_path(canonical))
     return aliases
