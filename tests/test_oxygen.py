@@ -15,6 +15,7 @@ from photostow.oxygen import (
     ingest,
     migrate,
     object_path,
+    prune_local_ledger,
     verify_objects,
     visible_files,
 )
@@ -4329,6 +4330,20 @@ def test_migrate_dry_run_discovers_before_applying_limit(
 
     monkeypatch.setattr(oxygen, "_stable_digest", digest)
     assert migrate(tmp_path, dry_run=True, limit=1) == 1
+
+
+def test_prune_local_ledger_scans_and_rotates_locally(tmp_path: Path) -> None:
+    root = tmp_path / "photo"
+    root.mkdir()
+    kept = root / "kept.jpg"
+    kept.write_bytes(b"kept")
+    ledger = tmp_path / "ledger" / "photos-oxygen-sha"
+    ledger.parent.mkdir()
+    ledger.write_text(f"keep  {kept}\nstale  {root / 'gone.jpg'}\n", encoding="utf-8")
+
+    assert prune_local_ledger(root, ledger, keep=2) == (2, 1)
+    assert ledger.read_text(encoding="utf-8") == f"keep  {kept}\n"
+    assert (ledger.parent / "photos-oxygen-sha.1.gz").is_file()
 
 
 def test_migrate_reuses_verified_orphan_object(tmp_path: Path) -> None:

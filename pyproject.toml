@@ -22,6 +22,7 @@ photostow = "photostow.cli:main"
 oxygen-migrate = "photostow.oxygen_cli:main"
 oxygen-verify = "photostow.oxygen_verify_cli:main"
 oxygen-inventory = "photostow.oxygen_inventory_cli:main"
+oxygen-ledger-prune = "photostow.oxygen_ledger_cli:main"
 oxygen-ingest = "photostow.oxygen_ingest_cli:main"
 oxygen-gc = "photostow.oxygen_gc_cli:main"
 

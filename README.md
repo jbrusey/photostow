@@ -77,9 +77,15 @@ photos-oxygen-sha.2.gz
 
 Default retention is 5 backups; override with `LEDGER_BACKUPS=10`.
 
-### `make prune-oxygen-ledger`
+### `oxygen-ledger-prune`
 
-Removes ledger rows whose files no longer exist on Synology. Use after deleting whole staging folders such as `incoming/carbon`.
+Run this on Oxygen after deleting visible files. It scans `/var/services/photo`
+locally, removes stale rows from `/volume1/photostow/ledger/photos-oxygen-sha`,
+and rotates compressed backups without transferring the archive listing over SSH:
+
+```sh
+oxygen-ledger-prune
+```
 
 ### `make missing`
 

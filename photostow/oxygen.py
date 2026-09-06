@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import fcntl
 import fnmatch
+import gzip
 import hashlib
 import json
 import os
@@ -533,6 +534,56 @@ def _record_migration_success(
         stream.write(json.dumps(record, ensure_ascii=False) + "\n")
         stream.flush()
         os.fsync(stream.fileno())
+
+
+def _prune_local_ledger_locked(
+    root: Path, ledger: Path, keep: int = 5, object_root: Path | None = None
+) -> tuple[int, int]:
+    if type(keep) is not int or keep < 1:
+        raise ValueError("keep must be a positive integer")
+    if ledger.is_symlink() or any(parent.is_symlink() for parent in ledger.parents):
+        raise ValueError(f"ledger path is unsafe: {ledger}")
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    old = ledger.read_text(encoding="utf-8").splitlines() if ledger.is_file() else []
+    current = {
+        canonical_archive_path(path)
+        for path in iter_visible_files(
+            root.resolve(), excluded_root=object_root.resolve() if object_root else None
+        )
+    }
+    pruned = {
+        canonical_archive_path(path): digest
+        for digest, path in parse_sha_lines(old)
+        if canonical_archive_path(path) in current
+    }
+    payload = "".join(f"{digest}  {path}\n" for path, digest in sorted(pruned.items()))
+    for index in range(keep - 1, 0, -1):
+        previous = ledger.with_name(f"{ledger.name}.{index}.gz")
+        if previous.is_file():
+            previous.rename(ledger.with_name(f"{ledger.name}.{index + 1}.gz"))
+    if ledger.is_file():
+        with ledger.open("rb") as source, gzip.open(
+            ledger.with_name(f"{ledger.name}.1.gz"), "wb"
+        ) as backup:
+            backup.write(source.read())
+    fd, temporary_name = tempfile.mkstemp(dir=ledger.parent, prefix=f".{ledger.name}.")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary_name, ledger)
+    except BaseException:
+        os.unlink(temporary_name)
+        raise
+    return len(old), len(pruned)
+
+
+def prune_local_ledger(
+    root: Path, ledger: Path, keep: int = 5, object_root: Path | None = None
+) -> tuple[int, int]:
+    with _operation_lock(root.resolve()):
+        return _prune_local_ledger_locked(root, ledger, keep, object_root)
 
 
 def _merge_migration_state_into_ledger(state: Path, ledger: Path) -> None:

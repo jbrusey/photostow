@@ -8,7 +8,7 @@ DUPLICATE_REPORT ?= duplicate-groups.txt
 OXYGEN_LEDGER_REMOTE ?= /volume1/photostow/ledger/photos-oxygen-sha
 LEDGER_BACKUPS ?= 5
 
-.PHONY: test lint format typecheck check review update-oxygen-ledger install-oxygen-ledger prune-oxygen-ledger missing duplicate-groups delete-duplicates stage-review archive-reviewed clean
+.PHONY: test lint format typecheck check review update-oxygen-ledger install-oxygen-ledger missing duplicate-groups delete-duplicates stage-review archive-reviewed clean
 
 test:
 	uv run pytest tests
@@ -33,9 +33,6 @@ update-oxygen-ledger:
 
 install-oxygen-ledger:
 	uv run photostow install-remote-ledger $(OXYGEN_HOST) $(OXYGEN_LEDGER) $(OXYGEN_LEDGER_REMOTE) --keep $(LEDGER_BACKUPS)
-
-prune-oxygen-ledger:
-	uv run photostow prune-remote-ledger $(OXYGEN_HOST) $(OXYGEN_DIR) $(OXYGEN_LEDGER)
 
 missing:
 	uv run photostow library-missing "$(PHOTOS_LIBRARY)" $(OXYGEN_LEDGER) > missing.tsv
