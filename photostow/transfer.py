@@ -241,7 +241,11 @@ def iter_cached(root: Path, cache: Path, checkpoint: int = 100) -> Iterator[Hash
         if isinstance(fingerprint, dict) and isinstance(digest, str):
             old_by_fingerprint[tuple(sorted(fingerprint.items()))] = digest
     records: dict[str, dict[str, object]] = {}
-    for count, path in enumerate(iter_files(root), 1):
+    count = 0
+    for path in iter_files(root):
+        if path.name == ".DS_Store":
+            continue
+        count += 1
         relative = str(path.relative_to(root))
         fingerprint = _fingerprint(path)
         previous = old.get(relative)

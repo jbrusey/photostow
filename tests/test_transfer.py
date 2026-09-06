@@ -57,6 +57,18 @@ def test_transfer_state_is_durable_and_reloadable(tmp_path: Path) -> None:
     assert completed_transfers(state) == {(digest, "2024/source.jpg")}
 
 
+def test_scan_cached_ignores_ds_store(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / ".DS_Store").write_bytes(b"metadata")
+    photo = source / "photo.jpg"
+    photo.write_bytes(b"photo")
+
+    result = scan_cached(source, tmp_path / "cache.json")
+
+    assert [record.path for record in result] == [photo]
+
+
 def test_scan_cached_reuses_unchanged_hash(tmp_path: Path, monkeypatch) -> None:
     source = tmp_path / "source"
     source.mkdir()
