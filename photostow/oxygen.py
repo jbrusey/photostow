@@ -620,6 +620,24 @@ def _process_record(
                     f"already-migrated inode has unexpected link count: {path}"
                 )
             return
+        if obj.stat().st_nlink == 1:
+            if path.stat().st_nlink != 1:
+                raise OSError(f"source has unexpected link count: {path}")
+            if dry_run:
+                return
+            current_digest, _ = _stable_digest(path)
+            if current_digest != digest:
+                raise OSError(f"file changed while publishing: {path}")
+            fd, name = tempfile.mkstemp(dir=path.parent)
+            os.close(fd)
+            replacement = Path(name)
+            replacement.unlink()
+            try:
+                os.link(obj, replacement, follow_symlinks=False)
+                os.replace(replacement, path)
+            finally:
+                replacement.unlink(missing_ok=True)
+            return
         detail = f"; ledger references: {', '.join(references)}" if references else ""
         raise OSError(f"object already exists for different inode: {obj}{detail}")
     if path.stat().st_nlink != 1:

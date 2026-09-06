@@ -4331,6 +4331,20 @@ def test_migrate_dry_run_discovers_before_applying_limit(
     assert migrate(tmp_path, dry_run=True, limit=1) == 1
 
 
+def test_migrate_reuses_verified_orphan_object(tmp_path: Path) -> None:
+    photo = tmp_path / "photo.jpg"
+    photo.write_bytes(b"photo")
+    objects = tmp_path / "objects"
+    digest = hashlib.sha256(b"photo").hexdigest()
+    orphan = object_path(tmp_path, digest, objects)
+    orphan.parent.mkdir(parents=True)
+    orphan.write_bytes(b"photo")
+
+    assert migrate(tmp_path, dry_run=False, object_root=objects) == 1
+    assert os.path.samefile(photo, orphan)
+    assert orphan.stat().st_nlink == 2
+
+
 def test_migrate_skips_rehash_for_ledger_verified_hardlink(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
