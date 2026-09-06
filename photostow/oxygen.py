@@ -600,6 +600,7 @@ def _process_record(
     dry_run: bool,
     verbose: bool,
     fast_path: bool = False,
+    references: tuple[str, ...] = (),
 ) -> None:
     if path.is_symlink():
         raise OSError(f"migration path is a symlink: {path}")
@@ -619,7 +620,8 @@ def _process_record(
                     f"already-migrated inode has unexpected link count: {path}"
                 )
             return
-        raise OSError(f"object already exists for different inode: {obj}")
+        detail = f"; ledger references: {', '.join(references)}" if references else ""
+        raise OSError(f"object already exists for different inode: {obj}{detail}")
     if path.stat().st_nlink != 1:
         raise OSError(f"source has unexpected link count: {path}")
     if dry_run:
@@ -727,6 +729,7 @@ def _migrate_locked(
 ) -> int:
     root = root.resolve()
     known_digests: dict[str, str] = {}
+    known_references: dict[str, set[str]] = {}
     configured_object_root = (object_root or default_object_root(root)).resolve()
     if state is None and root == DEFAULT_ARCHIVE_ROOT.resolve():
         state = configured_object_root / "ledger" / "migration-state.jsonl"
@@ -740,6 +743,9 @@ def _migrate_locked(
         ):
             if re.fullmatch(r"[0-9a-f]{64}", digest):
                 known_digests[resolved_archive_path(ledger_path)] = digest
+                known_references.setdefault(digest, set()).add(
+                    canonical_archive_path(ledger_path)
+                )
     errors: list[str] = []
     fast_paths: set[Path] = set()
     state_changed = False
@@ -970,6 +976,7 @@ def _migrate_locked(
                 dry_run,
                 verbose,
                 path in fast_paths,
+                tuple(sorted(known_references.get(digest, set()))),
             )
             if not dry_run and state is not None and str(path) not in known_digests:
                 _record_migration_success(path, path.stat(), digest, state)
