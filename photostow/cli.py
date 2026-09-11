@@ -1,13 +1,10 @@
 from __future__ import annotations
 
 import argparse
-import re
 import shutil
 import signal
 import sys
-from contextlib import ExitStack
 from pathlib import Path
-from typing import TextIO
 
 from photostow.audit import (
     delete_duplicate_groups,
@@ -20,7 +17,6 @@ from photostow.core import hash_tree, missing_hash_records, parse_sha_lines
 from photostow.photos import (
     earliest_created,
     iter_assets,
-    library_destinations,
     library_hashes,
     missing_library_assets,
 )
@@ -37,12 +33,6 @@ from photostow.remote import (
     update_remote_ledger,
     validate_source_paths,
 )
-from photostow.transfer import (
-    completed_transfers,
-    iter_cached,
-    read_transfer_manifest,
-    transfer_batch,
-)
 
 
 def cmd_hash(args: argparse.Namespace) -> int:
@@ -50,115 +40,6 @@ def cmd_hash(args: argparse.Namespace) -> int:
     for digest, path in hash_tree(root):
         print(f"{digest}  {path}")
     return 0
-
-
-# Build a resumable, duplicate-aware plan from the local hash cache.
-def cmd_transfer_plan(args: argparse.Namespace) -> int:
-    oxygen_digests = set()
-    with open(args.oxygen_inventory, encoding="utf-8") as inventory_stream:
-        for line in inventory_stream:
-            digest = line.strip()
-            if digest and not re.fullmatch(r"[0-9a-f]{64}", digest):
-                raise ValueError(f"invalid Oxygen digest: {digest}")
-            if digest:
-                oxygen_digests.add(digest)
-    destinations = (
-        library_destinations(Path(args.photos_library)) if args.photos_library else None
-    )
-    duplicates: dict[str, list[Path]] = {}
-    destination_digests: dict[Path, str] = {}
-    seen: set[str] = set()
-    queued = 0
-    collisions = 0
-    with ExitStack() as stack:
-        stream: TextIO = (
-            sys.stdout
-            if args.output == "-"
-            else stack.enter_context(Path(args.output).open("w", encoding="utf-8"))
-        )
-        stream.write("sha256\tpath" + ("\tdestination" if destinations else "") + "\n")
-        for record in iter_cached(Path(args.source_root), Path(args.cache)):
-            paths = duplicates.setdefault(record.digest, [])
-            paths.append(record.path)
-            destination = destinations.get(record.path) if destinations else None
-            if destinations and destination is None:
-                raise ValueError(f"file is not a Photos asset: {record.path}")
-            if destination is not None:
-                prior = destination_digests.setdefault(destination, record.digest)
-                if prior != record.digest:
-                    print(
-                        f"destination collision {destination}: {prior} vs {record.digest}",
-                        file=sys.stderr,
-                    )
-                    collisions += 1
-                    continue
-            if record.digest not in oxygen_digests and record.digest not in seen:
-                line = f"{record.digest}\t{record.path}"
-                if destination is not None:
-                    line += f"\t{destination}"
-                stream.write(line + "\n")
-                stream.flush()
-                seen.add(record.digest)
-                queued += 1
-    for digest, paths in sorted(duplicates.items()):
-        if len(paths) > 1:
-            print(f"duplicate {digest}: {' | '.join(map(str, paths))}", file=sys.stderr)
-    duplicate_count = sum(len(paths) > 1 for paths in duplicates.values())
-    print(f"queued {queued} files", file=sys.stderr)
-    return 1 if duplicate_count or collisions else 0
-
-
-def cmd_transfer_run(args: argparse.Namespace) -> int:
-    if args.batch_size < 1:
-        raise ValueError("batch size must be positive")
-    completed = completed_transfers(Path(args.state))
-    batch = []
-    transferred = 0
-    failed = 0
-    for record in read_transfer_manifest(Path(args.manifest)):
-        batch.append(record)
-        if len(batch) < args.batch_size:
-            continue
-        pending = [
-            item
-            for item in batch
-            if item.destination is not None
-            and (item.digest, str(item.destination)) not in completed
-        ]
-        batch_transferred = transfer_batch(
-            pending,
-            Path(args.source_root),
-            args.host,
-            args.staging_root,
-            args.oxygen_root,
-            args.object_root,
-            Path(args.state),
-            completed,
-        )
-        transferred += batch_transferred
-        failed += len(pending) - batch_transferred
-        batch = []
-    if batch:
-        pending = [
-            item
-            for item in batch
-            if item.destination is not None
-            and (item.digest, str(item.destination)) not in completed
-        ]
-        batch_transferred = transfer_batch(
-            pending,
-            Path(args.source_root),
-            args.host,
-            args.staging_root,
-            args.oxygen_root,
-            args.object_root,
-            Path(args.state),
-            completed,
-        )
-        transferred += batch_transferred
-        failed += len(pending) - batch_transferred
-    print(f"transferred {transferred} files; failures {failed}", file=sys.stderr)
-    return 1 if failed else 0
 
 
 def cmd_missing(args: argparse.Namespace) -> int:
@@ -322,32 +203,6 @@ def build_parser() -> argparse.ArgumentParser:
     hash_parser = sub.add_parser("hash", help="hash all files under a directory")
     hash_parser.add_argument("root")
     hash_parser.set_defaults(func=cmd_hash)
-
-    transfer_parser = sub.add_parser(
-        "transfer-plan", help="plan one transfer per missing content digest"
-    )
-    transfer_parser.add_argument("source_root")
-    transfer_parser.add_argument("oxygen_inventory")
-    transfer_parser.add_argument("cache")
-    transfer_parser.add_argument("output")
-    transfer_parser.add_argument(
-        "--photos-library",
-        help="derive YYYY/filename destinations from a Photos library",
-    )
-    transfer_parser.set_defaults(func=cmd_transfer_plan)
-
-    run_parser = sub.add_parser(
-        "transfer-run", help="rsync and ingest a transfer manifest"
-    )
-    run_parser.add_argument("manifest")
-    run_parser.add_argument("source_root")
-    run_parser.add_argument("host")
-    run_parser.add_argument("staging_root")
-    run_parser.add_argument("oxygen_root")
-    run_parser.add_argument("object_root")
-    run_parser.add_argument("state")
-    run_parser.add_argument("--batch-size", type=int, default=50)
-    run_parser.set_defaults(func=cmd_transfer_run)
 
     missing_parser = sub.add_parser(
         "missing", help="list source hashes absent from archive"

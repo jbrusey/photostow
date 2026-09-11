@@ -8,7 +8,7 @@ DUPLICATE_REPORT ?= duplicate-groups.txt
 OXYGEN_LEDGER_REMOTE ?= /volume1/photostow/ledger/photos-oxygen-sha
 LEDGER_BACKUPS ?= 5
 
-.PHONY: test lint format typecheck check review update-oxygen-ledger install-oxygen-ledger missing duplicate-groups delete-duplicates stage-review archive-reviewed clean
+.PHONY: test lint format typecheck check review update-oxygen-ledger install-oxygen-ledger missing duplicate-groups delete-duplicates stage-review archive-reviewed profile-ingest-test cleanup-ingest-test clean
 
 test:
 	uv run pytest tests
@@ -51,6 +51,12 @@ archive-reviewed:
 	uv run photostow copy-tree $(REVIEW_DIR) $(OXYGEN_HOST) $(OXYGEN_DIR)
 	$(MAKE) update-oxygen-ledger
 	$(MAKE) install-oxygen-ledger
+
+profile-ingest-test:
+	scripts/profile-ingest-test.sh
+
+cleanup-ingest-test:
+	scripts/cleanup-ingest-test.sh
 
 clean:
 	-rm -rf .pytest_cache .ruff_cache .mypy_cache build dist *.egg-info

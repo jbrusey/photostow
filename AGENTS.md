@@ -40,7 +40,8 @@ make archive-reviewed
 
 so the ledger is updated and installed back on oxygen.
 
-Remote ledger installs rotate compressed backups:
+Remote ledger installs rotate compressed backups under
+`/volume1/photostow/ledger`:
 
 ```text
 photos-oxygen-sha.1.gz

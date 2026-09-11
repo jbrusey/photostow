@@ -16,6 +16,8 @@ missing*.err
 missing.txt
 review/
 review-*/
+ingest-test-images/
+ingest-test-profile/
 audit-new-remote*/
 oxygen-*.txt
 oxygen-*.sizes

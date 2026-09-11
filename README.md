@@ -32,10 +32,7 @@ the repository on Oxygen, install it without the development extra:
 git pull --ff-only
 python3 --version  # 3.9.14
 python3 -m pip install --user -e .
-oxygen-migrate --help
-oxygen-ingest --help
-oxygen-verify --help
-oxygen-gc --help
+oxygen-ledger-prune --help
 ```
 
 Do not run `uv` or install the `dev` extra on Oxygen. If a user-installed
@@ -111,6 +108,30 @@ The files are hardlinks to Photos originals, so this is quick and does not dupli
 Copies the remaining files in `review/` into Synology year folders under `/var/services/photo`,
 then updates and reinstalls the ledger. This is the only supported reviewed-copy workflow.
 
+### `make profile-ingest-test`
+
+Use this for a small, disposable upload and ledger-ingest benchmark. Put the
+sample files in `ingest-test-images/`, preferably grouped into year folders:
+
+```sh
+mkdir -p ingest-test-images/2024 ingest-test-images/2025
+# Copy or hardlink a representative sample into those directories.
+make profile-ingest-test
+```
+
+The target refuses to run if the dedicated remote test root already exists.
+It profiles source hashing, the copy, and the remote ledger update separately,
+writing timings and a manifest to `ingest-test-profile/`. It never installs the test ledger as
+the production ledger. After checking the results, remove only the disposable
+remote tree with:
+
+```sh
+CONFIRM=YES make cleanup-ingest-test
+```
+
+Override the host with `OXYGEN_HOST=...`; override the local sample directory
+with `INGEST_TEST_IMAGES=...`.
+
 ### `make duplicate-groups`
 
 Writes duplicate content groups on oxygen to:
@@ -143,54 +164,36 @@ uv run photostow delete-duplicates oxygen duplicate-groups.txt --yes
 
 The Makefile wraps the CLI. For custom paths, use `uv run photostow --help` and subcommand help.
 
-## Content-addressed Oxygen commands
+## Removing the old object-store links
 
-These commands run locally on Oxygen with Python 3.9.14. Migration applies
-changes by default; use `--dry-run` for a preview. Ingest applies changes,
-while verify and GC are report-only:
+The former object-store design is no longer supported. On Oxygen, stop archive
+writers and identify the actual old object root (formerly
+`/volume1/photostow`). First inspect only object files that have another hardlink:
 
 ```sh
-oxygen-migrate 2006 --dry-run --limit 10 --exclude 'incoming-*' \
-  --jobs 1 --nice 10 --manifest trial.json
-oxygen-migrate --apply trial.json
-oxygen-ingest incoming.jpg /var/services/photo/2025/incoming.jpg \
-  --root /var/services/photo --safe-verify
-oxygen-verify /volume1/photostow --limit 10 --verbose
-oxygen-gc /volume1/photostow
+OBJECT_ROOT=/volume1/photostow
+find "$OBJECT_ROOT/sha256" -type f -links +1 -print
 ```
 
-A positional migration target is relative to `/var/services/photo`; `--path`
-adds a file or subtree beneath that target. For another archive, use the
-explicit form `oxygen-migrate --root /archive 2006 --path photo.jpg`.
+After reviewing the list, remove those object-store directory entries and empty
+shards:
 
-The default object store is `/volume1/photostow` for the canonical archive
-`/var/services/photo`. Use `--object-root` to choose another location on the same
-filesystem; local non-canonical roots keep their `.objects` store by default.
-For a custom object-root name, pass the archive root to GC as well:
-`oxygen-gc /archive-objects --root /var/services/photo`.
-Migration hashes serially (`--jobs 1`) and lowers CPU priority by default;
-use `--verbose` for one line per discovered/hashed file. Without it, output is
-bounded to startup and summary progress. Apply failures are appended as JSONL
-to `migration-failures.jsonl` by default; use `--failure-list` to choose the
-path and `--continue-on-error` to process later files. Apply processes files
-one at a time; `--limit` bounds the streamed selection;
-it does not make a large directory walk cheap. Use `--path` for a genuinely small
-trial subtree. A higher `--jobs` value is rejected
-until parallel hashing is implemented. Repeat
-`--exclude PATTERN` to omit files or subtrees.
-Review a manifest before applying it; apply refuses files whose identity, size,
-mtime, or digest changed. Migration refuses multiple visible references to one
-object and records those paths for review. `oxygen-gc` is report-only and does not delete files. It verifies the object
-store first, lists link-count-one candidates, and reports retained objects with
-other link counts; malformed or corrupt stores produce no candidate report.
+```sh
+find "$OBJECT_ROOT/sha256" -type f -links +1 -delete
+find "$OBJECT_ROOT/sha256" -depth -type d -empty -delete
+```
 
-Visible photos and content objects are hardlinks, so they share inode metadata.
-Replacing a visible file can change its permissions, timestamps, ownership, ACLs,
-and extended attributes. Object contents are protected by policy and verification,
-not by separate permissions: editing any hardlink edits the shared inode. Test
-Pixette/WebDAV rename and write behavior on a representative directory before
-migrating production data. Passing local `make review` is not production approval;
-Production Oxygen/Synology acceptance remains pending because the environment is unavailable; complete the technical-review checklist before approval.
+This removes the object-store names, not the visible archive files or their
+contents. Do not delete link-count-one objects: they may be the only remaining
+copy. Preserve them until they have been compared with the archive and
+explicitly handled. Back up and separately review old migration state, failure
+logs, and the object-store ledger before removing them.
 
-See [PLAN.md](PLAN.md), the [technical review checklist](TECHNICAL_REVIEW.md),
-and [ASSUMPTIONS.md](ASSUMPTIONS.md) for environment limits.
+The supported Oxygen command is now only:
+
+```sh
+oxygen-ledger-prune --root /var/services/photo \
+  --ledger /volume1/photostow/ledger/photos-oxygen-sha
+```
+
+See [PLAN.md](PLAN.md) for the design rationale and cleanup procedure.

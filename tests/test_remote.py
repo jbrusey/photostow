@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from photostow import cli, oxygen, remote
+from photostow import cli, remote
 
 
 def test_archive_review_make_target_preserves_safe_order() -> None:
@@ -364,22 +364,6 @@ def test_missing_records_rejects_invalid_adjusted_flag(tmp_path: Path) -> None:
     with pytest.raises(ValueError) as error:
         remote.missing_records(tsv)
     assert str(error.value) == "missing TSV adjusted flag must be 0 or 1"
-
-
-def test_migrate_rejects_duplicate_visible_references(tmp_path: Path) -> None:
-    first = tmp_path / "2022" / "one.jpg"
-    second = tmp_path / "2022" / "two.jpg"
-    first.parent.mkdir()
-    first.write_bytes(b"same photo")
-    second.write_bytes(b"same photo")
-    failures = tmp_path / "migration-failures.jsonl"
-
-    with pytest.raises(OSError, match="object already exists"):
-        oxygen.migrate(tmp_path, dry_run=False, failure_list=failures)
-    obj = next(path for path in (tmp_path / ".objects").rglob("*") if path.is_file())
-    assert obj.is_file()
-    assert first.stat().st_ino == obj.stat().st_ino
-    assert second.stat().st_ino != obj.stat().st_ino
 
 
 def test_copy_stage_skips_empty_stage(tmp_path: Path, monkeypatch: Any) -> None:
