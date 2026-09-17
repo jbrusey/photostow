@@ -239,6 +239,29 @@ def test_remote_duplicate_groups_includes_pixette_removed_variant(
     ) == [[removed, keep]]
 
 
+def test_remote_duplicate_groups_ignores_macos_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    digest = "a" * 64
+    keep = "/var/services/photo/2019/a.jpeg"
+    monkeypatch.setattr(
+        audit,
+        "remote_files",
+        lambda host, root: [
+            RemoteFile(keep, 1),
+            RemoteFile("/var/services/photo/.DS_Store", 1),
+        ],
+    )
+    (tmp_path / "ledger").write_text(
+        f"{digest}  {keep}\n{digest}  /var/services/photo/.DS_Store\n",
+        encoding="utf-8",
+    )
+
+    assert audit.remote_duplicate_groups(
+        "oxygen", "/var/services/photo", tmp_path / "ledger"
+    ) == []
+
+
 def test_duplicate_groups_by_hash() -> None:
     groups = duplicate_groups(
         [

@@ -121,7 +121,11 @@ def pixette_removed_variant(path: str) -> str:
 
 
 def remote_duplicate_groups(host: str, root: str, ledger: Path) -> list[list[str]]:
-    current = {canonical_archive_path(file.path) for file in remote_files(host, root)}
+    current = {
+        canonical_archive_path(file.path)
+        for file in remote_files(host, root)
+        if posixpath.basename(file.path) != ".DS_Store"
+    }
     lines = ledger.read_text(encoding="utf-8").splitlines()
     expanded = []
     seen: set[tuple[str, str]] = set()
