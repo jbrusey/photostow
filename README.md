@@ -52,6 +52,17 @@ Override any of these on the `make` command line if needed. Remote path
 output is currently expected to be UTF-8; non-UTF-8 filenames require production
 acceptance testing before support is claimed.
 
+## GUI prototype
+
+Launch the local workflow front end from the repository:
+
+```sh
+uv run photostow-gui
+```
+
+The GUI refreshes the ledger before finding missing photos, opens the staged
+review tree in Finder, and uses `make archive-reviewed` for the final copy.
+
 ## Commands
 
 ### `make update-oxygen-ledger`

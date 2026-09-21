@@ -19,6 +19,7 @@ dev = [
 
 [project.scripts]
 photostow = "photostow.cli:main"
+photostow-gui = "photostow.gui:main"
 oxygen-ledger-prune = "photostow.oxygen_ledger_cli:main"
 
 [tool.ruff]
