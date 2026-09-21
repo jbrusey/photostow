@@ -65,9 +65,18 @@ def iter_assets(library: Path) -> list[PhotoAsset]:
     db = photos_db(library)
     originals = library / "originals"
     with connect_readonly(db) as conn:
+        columns = {row[1] for row in conn.execute("pragma table_info(ZASSET)")}
+        if "ZHASADJUSTMENTS" in columns:
+            adjustment_expression = "ZHASADJUSTMENTS"
+        elif "ZADJUSTMENTSSTATE" in columns:
+            # Recent Photos versions replaced the boolean with a state value.
+            adjustment_expression = "coalesce(ZADJUSTMENTSSTATE, 0) != 0"
+        else:
+            adjustment_expression = "0"
         rows = conn.execute(
-            """
-            select ZUUID, ZFILENAME, ZDIRECTORY, ZDATECREATED, ZHASADJUSTMENTS
+            f"""
+            select ZUUID, ZFILENAME, ZDIRECTORY, ZDATECREATED,
+                   {adjustment_expression}
             from ZASSET
             where ZFILENAME is not null
               and ZDIRECTORY is not null
