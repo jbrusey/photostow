@@ -34,7 +34,8 @@ update-oxygen-ledger:
 install-oxygen-ledger:
 	uv run photostow install-remote-ledger $(OXYGEN_HOST) $(OXYGEN_LEDGER) $(OXYGEN_LEDGER_REMOTE) --keep $(LEDGER_BACKUPS)
 
-missing:
+# Refresh the local snapshot before comparing Photos against it.
+missing: update-oxygen-ledger
 	uv run photostow library-missing "$(PHOTOS_LIBRARY)" $(OXYGEN_LEDGER) > missing.tsv
 
 duplicate-groups:

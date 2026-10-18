@@ -54,6 +54,11 @@ acceptance testing before support is claimed.
 
 ## GUI prototype
 
+The GUI requires Tkinter. Tkinter is not installed by `uv sync` or pip; use a
+Python installation built with Tk support (on macOS, install the matching
+Homebrew `python-tk` formula if needed). Verify it with
+`uv run python -c "import tkinter"`.
+
 Launch the local workflow front end from the repository:
 
 ```sh
@@ -97,11 +102,13 @@ oxygen-ledger-prune
 
 ### `make missing`
 
-Reads the local Photos database read-only, hashes present originals, and writes photos absent from the Synology ledger to:
+Refreshes the local ledger from Synology first, then reads the local Photos database read-only, hashes present originals, and writes photos absent from the Synology ledger to:
 
 ```text
 missing.tsv
 ```
+
+The refresh is automatic, so `make missing` uses the current local snapshot of Oxygen rather than a possibly stale ledger.
 
 ### `make stage-review`
 

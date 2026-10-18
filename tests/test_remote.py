@@ -19,6 +19,11 @@ def test_archive_review_make_target_preserves_safe_order() -> None:
     assert recipe.index("update-oxygen-ledger") < recipe.index("install-oxygen-ledger")
 
 
+def test_missing_make_target_refreshes_ledger_first() -> None:
+    makefile = Path("Makefile").read_text(encoding="utf-8")
+    assert "missing: update-oxygen-ledger" in makefile
+
+
 def test_remote_sha256_skips_empty_input(monkeypatch: Any) -> None:
     monkeypatch.setattr(
         remote.subprocess,
