@@ -167,32 +167,16 @@ def copy_paths_tar(
     if not paths:
         return 0
     validate_source_paths(paths, source_root)
-    with tempfile.NamedTemporaryFile("wb") as f:
-        f.write("\0".join(paths).encode() + b"\0")
-        f.flush()
-        mkdir = f"mkdir -p {shlex.quote(dest_root)}"
-        extract = f"cd {shlex.quote(dest_root)} && tar -xf -"
-        subprocess.run([*SSH, host, mkdir], check=True)
-        with subprocess.Popen(
-            [
-                *TAR,
-                *TAR_PROGRESS,
-                "-cf",
-                "-",
-                "-C",
-                str(source_root),
-                "--null",
-                "-T",
-                f.name,
-            ],
-            env={**os.environ, "COPYFILE_DISABLE": "1"},
-            stdout=subprocess.PIPE,
-        ) as tar:
-            subprocess.run([*SSH, host, extract], stdin=tar.stdout, check=True)
-            if tar.stdout:
-                tar.stdout.close()
-            if tar.wait() != 0:
-                raise subprocess.CalledProcessError(tar.returncode, tar.args)
+    subprocess.run([*SSH, host, f"mkdir -p {shlex.quote(dest_root)}"], check=True)
+    subprocess.run(
+        [
+            "rsync", "-rlt", "--from0", "--files-from=-", "--relative",
+            "--partial", "--partial-dir=.photostow-partial",
+            "-e", shlex.join(SSH), f"{source_root}/", f"{host}:{dest_root}/",
+        ],
+        input="\0".join(paths).encode() + b"\0",
+        check=True,
+    )
     return len(paths)
 
 

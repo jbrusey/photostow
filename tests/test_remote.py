@@ -448,37 +448,36 @@ def test_copy_stage_excludes_symlinked_files(tmp_path: Path, monkeypatch: Any) -
     assert all("2024" not in " ".join(command) for command in run_commands)
 
 
-def test_copy_paths_tar_preserves_newline_filename(
+def test_copy_paths_tar_uses_resumable_rsync_and_preserves_newline_filename(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
-    tar_files: list[str] = []
+    calls: list[tuple[list[str], dict[str, Any]]] = []
 
-    class FakeTar:
-        stdout = io.BytesIO()
+    def fake_run(command: list[str], **kwargs: Any) -> None:
+        calls.append((command, kwargs))
 
-        def __enter__(self) -> Any:
-            return self
-
-        def __exit__(self, *args: object) -> None:
-            return None
-
-        def wait(self) -> int:
-            return 0
-
-    def fake_popen(command: list[str], **kwargs: Any) -> FakeTar:
-        list_path = Path(command[command.index("-T") + 1])
-        tar_files.extend(list_path.read_bytes().decode().split("\0")[:-1])
-        assert "--null" in command
-        return FakeTar()
-
-    monkeypatch.setattr(remote.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(remote.subprocess, "run", lambda *args, **kwargs: None)
+    monkeypatch.setattr(remote.subprocess, "run", fake_run)
 
     assert (
         remote.copy_paths_tar(["album/photo\nname.jpg"], tmp_path, "oxygen", "/photo")
         == 1
     )
-    assert tar_files == ["album/photo\nname.jpg"]
+    rsync, kwargs = calls[1]
+    assert rsync[0] == "rsync"
+    assert "--partial" in rsync
+    assert "--partial-dir=.photostow-partial" in rsync
+    assert kwargs["input"] == b"album/photo\nname.jpg\0"
+    assert kwargs["check"] is True
+
+
+def test_copy_paths_tar_reports_rsync_failure(tmp_path: Path, monkeypatch: Any) -> None:
+    def fail_rsync(command: list[str], **kwargs: Any) -> None:
+        if command[0] == "rsync":
+            raise remote.subprocess.CalledProcessError(23, command)
+
+    monkeypatch.setattr(remote.subprocess, "run", fail_rsync)
+    with pytest.raises(remote.subprocess.CalledProcessError):
+        remote.copy_paths_tar(["photo.jpg"], tmp_path, "oxygen", "/photo")
 
 
 def test_cli_reports_filesystem_errors(
