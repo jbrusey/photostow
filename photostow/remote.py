@@ -4,6 +4,7 @@ import os
 import posixpath
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -14,6 +15,10 @@ from pathlib import Path
 from photostow.core import paths_not_in_ledger, prune_ledger_lines
 
 SSH = ["ssh", "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=120"]
+TAR = [shutil.which("gtar") or "tar", "--no-xattrs"]
+TAR_PROGRESS = (
+    ["--checkpoint=10000", "--checkpoint-action=dot"] if TAR[0].endswith("gtar") else []
+)
 REMOTE_EXCLUDES = (
     "-path '*/@eaDir' -prune -o "
     "-path '*/.objects' -prune -o "
@@ -156,22 +161,38 @@ def validate_source_paths(paths: list[str], source_root: Path) -> None:
             raise ValueError(f"refusing symlink source path: {path}")
 
 
-def copy_paths_rsync(
+def copy_paths_tar(
     paths: list[str], source_root: Path, host: str, dest_root: str
 ) -> int:
     if not paths:
         return 0
     validate_source_paths(paths, source_root)
-    subprocess.run([*SSH, host, f"mkdir -p {shlex.quote(dest_root)}"], check=True)
-    subprocess.run(
-        [
-            "rsync", "-rlt", "--from0", "--files-from=-", "--relative",
-            "--partial", "--partial-dir=.photostow-partial",
-            "-e", shlex.join(SSH), f"{source_root}/", f"{host}:{dest_root}/",
-        ],
-        input="\0".join(paths).encode() + b"\0",
-        check=True,
-    )
+    with tempfile.NamedTemporaryFile("wb") as f:
+        f.write("\0".join(paths).encode() + b"\0")
+        f.flush()
+        mkdir = f"mkdir -p {shlex.quote(dest_root)}"
+        extract = f"cd {shlex.quote(dest_root)} && tar -xf -"
+        subprocess.run([*SSH, host, mkdir], check=True)
+        with subprocess.Popen(
+            [
+                *TAR,
+                *TAR_PROGRESS,
+                "-cf",
+                "-",
+                "-C",
+                str(source_root),
+                "--null",
+                "-T",
+                f.name,
+            ],
+            env={**os.environ, "COPYFILE_DISABLE": "1"},
+            stdout=subprocess.PIPE,
+        ) as tar:
+            subprocess.run([*SSH, host, extract], stdin=tar.stdout, check=True)
+            if tar.stdout:
+                tar.stdout.close()
+            if tar.wait() != 0:
+                raise subprocess.CalledProcessError(tar.returncode, tar.args)
     return len(paths)
 
 
@@ -228,16 +249,35 @@ def copy_stage(stage: Path, host: str, dest_root: str) -> None:
     if not files:
         return
     subprocess.run([*SSH, host, f"mkdir -p {shlex.quote(dest_root)}"], check=True)
-    print(f"copying {len(files)} files", file=sys.stderr)
-    subprocess.run(
-        [
-            "rsync", "-rlt", "--from0", "--files-from=-", "--relative",
-            "--partial", "--partial-dir=.photostow-partial",
-            "-e", shlex.join(SSH), f"{stage}/", f"{host}:{dest_root}/",
-        ],
-        input="\0".join(files).encode() + b"\0",
-        check=True,
-    )
+    with tempfile.NamedTemporaryFile("wb") as f:
+        f.write("\0".join(files).encode() + b"\0")
+        f.flush()
+        print(f"copying {len(files)} files", file=sys.stderr)
+        tar_cmd = [
+            *TAR,
+            *TAR_PROGRESS,
+            "-cf",
+            "-",
+            "-C",
+            str(stage),
+            "--null",
+            "-T",
+            f.name,
+        ]
+        tar = subprocess.Popen(
+            tar_cmd,
+            env={**os.environ, "COPYFILE_DISABLE": "1"},
+            stdout=subprocess.PIPE,
+        )
+        subprocess.run(
+            [*SSH, host, f"cd {shlex.quote(dest_root)} && tar -xf -"],
+            stdin=tar.stdout,
+            check=True,
+        )
+        if tar.stdout:
+            tar.stdout.close()
+        if tar.wait() != 0:
+            raise subprocess.CalledProcessError(tar.returncode, tar.args)
     chmod_years(host, dest_root, years)
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -421,50 +422,63 @@ def test_copy_stage_excludes_symlinked_files(tmp_path: Path, monkeypatch: Any) -
     external_year = tmp_path / "external-year"
     external_year.mkdir()
     (stage / "2024").symlink_to(external_year, target_is_directory=True)
-    run_calls: list[tuple[list[str], dict[str, Any]]] = []
+    tar_files: list[str] = []
+    run_commands: list[list[str]] = []
+
+    class FakeTar:
+        stdout = io.BytesIO()
+
+        def wait(self) -> int:
+            return 0
+
+    def fake_popen(command: list[str], **kwargs: Any) -> FakeTar:
+        list_path = Path(command[command.index("-T") + 1])
+        tar_files.extend(list_path.read_bytes().decode().split("\0")[:-1])
+        return FakeTar()
+
+    monkeypatch.setattr(remote.subprocess, "Popen", fake_popen)
 
     def fake_run(command: list[str], **kwargs: Any) -> None:
-        run_calls.append((command, kwargs))
+        run_commands.append(command)
 
     monkeypatch.setattr(remote.subprocess, "run", fake_run)
     remote.copy_stage(stage, "oxygen", "/var/services/photo")
 
-    rsync, kwargs = next(call for call in run_calls if call[0][0] == "rsync")
-    assert "--partial" in rsync
-    assert kwargs["input"] == b"2025/photo\nname.jpg\0"
-    assert all("2024" not in " ".join(command) for command, _ in run_calls)
+    assert tar_files == ["2025/photo\nname.jpg"]
+    assert all("2024" not in " ".join(command) for command in run_commands)
 
 
-def test_copy_paths_rsync_uses_resumable_rsync_and_preserves_newline_filename(
+def test_copy_paths_tar_preserves_newline_filename(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
-    calls: list[tuple[list[str], dict[str, Any]]] = []
+    tar_files: list[str] = []
 
-    def fake_run(command: list[str], **kwargs: Any) -> None:
-        calls.append((command, kwargs))
+    class FakeTar:
+        stdout = io.BytesIO()
 
-    monkeypatch.setattr(remote.subprocess, "run", fake_run)
+        def __enter__(self) -> Any:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def wait(self) -> int:
+            return 0
+
+    def fake_popen(command: list[str], **kwargs: Any) -> FakeTar:
+        list_path = Path(command[command.index("-T") + 1])
+        tar_files.extend(list_path.read_bytes().decode().split("\0")[:-1])
+        assert "--null" in command
+        return FakeTar()
+
+    monkeypatch.setattr(remote.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(remote.subprocess, "run", lambda *args, **kwargs: None)
 
     assert (
-        remote.copy_paths_rsync(["album/photo\nname.jpg"], tmp_path, "oxygen", "/photo")
+        remote.copy_paths_tar(["album/photo\nname.jpg"], tmp_path, "oxygen", "/photo")
         == 1
     )
-    rsync, kwargs = calls[1]
-    assert rsync[0] == "rsync"
-    assert "--partial" in rsync
-    assert "--partial-dir=.photostow-partial" in rsync
-    assert kwargs["input"] == b"album/photo\nname.jpg\0"
-    assert kwargs["check"] is True
-
-
-def test_copy_paths_rsync_reports_rsync_failure(tmp_path: Path, monkeypatch: Any) -> None:
-    def fail_rsync(command: list[str], **kwargs: Any) -> None:
-        if command[0] == "rsync":
-            raise remote.subprocess.CalledProcessError(23, command)
-
-    monkeypatch.setattr(remote.subprocess, "run", fail_rsync)
-    with pytest.raises(remote.subprocess.CalledProcessError):
-        remote.copy_paths_rsync(["photo.jpg"], tmp_path, "oxygen", "/photo")
+    assert tar_files == ["album/photo\nname.jpg"]
 
 
 def test_cli_reports_filesystem_errors(
@@ -563,14 +577,14 @@ def test_copy_missing_rejects_outside_record_path(
     assert "photostow failed:" in capsys.readouterr().err
 
 
-def test_copy_paths_rsync_rejects_absolute_source_path(tmp_path: Path) -> None:
+def test_copy_paths_tar_rejects_absolute_source_path(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="must be relative"):
-        remote.copy_paths_rsync(
+        remote.copy_paths_tar(
             [str(tmp_path / "photo.jpg")], tmp_path, "oxygen", "/photo"
         )
 
 
-def test_copy_paths_rsync_rejects_symlink_source(
+def test_copy_paths_tar_rejects_symlink_source(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
     target = tmp_path / "target.jpg"
@@ -583,10 +597,10 @@ def test_copy_paths_rsync_rejects_symlink_source(
     )
 
     with pytest.raises(ValueError, match="refusing symlink source path"):
-        remote.copy_paths_rsync(["link.jpg"], tmp_path, "oxygen", "/photo")
+        remote.copy_paths_tar(["link.jpg"], tmp_path, "oxygen", "/photo")
 
 
-def test_copy_paths_rsync_rejects_symlinked_parent(
+def test_copy_paths_tar_rejects_symlinked_parent(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
     root = tmp_path / "source"
@@ -602,7 +616,7 @@ def test_copy_paths_rsync_rejects_symlinked_parent(
     )
 
     with pytest.raises(ValueError, match="escapes source root"):
-        remote.copy_paths_rsync(["album/photo.jpg"], root, "oxygen", "/photo")
+        remote.copy_paths_tar(["album/photo.jpg"], root, "oxygen", "/photo")
 
 
 def test_stage_by_year_skips_symlink_sources(tmp_path: Path) -> None:

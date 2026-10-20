@@ -21,7 +21,7 @@ from photostow.photos import (
     missing_library_assets,
 )
 from photostow.remote import (
-    copy_paths_rsync,
+    copy_paths_tar,
     copy_records_by_year,
     copy_stage,
     install_remote_ledger,
@@ -103,7 +103,7 @@ def cmd_copy_missing(args: argparse.Namespace) -> int:
             for rel in rels:
                 print(rel)
             return 0
-        count = copy_paths_rsync(rels, Path(args.source_root), args.host, args.dest_root)
+        count = copy_paths_tar(rels, Path(args.source_root), args.host, args.dest_root)
     print(f"copied {count} files", file=sys.stderr)
     return 0
 
